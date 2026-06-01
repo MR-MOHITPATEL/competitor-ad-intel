@@ -1117,8 +1117,8 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                         st.markdown(f"**Headline:** {chosen.get('ad_creative_link_title') or '—'}")
                         st.markdown(f"**Body:** {(chosen.get('ad_creative_body') or '—')[:400]}")
                         st.markdown(f"**CTA:** {chosen.get('cta_type') or '—'}")
-                        if chosen.get("ad_snapshot_url"):
-                            st.markdown(f"[🔗 View on Facebook]({chosen['ad_snapshot_url']})")
+                        ad_lib_url = f"https://www.facebook.com/ads/library/?id={chosen.get('ad_id','')}"
+                        st.markdown(f"[🔗 View on Facebook Ad Library]({ad_lib_url})")
                     with dc2:
                         st.markdown("**AI Analysis**")
                         st.markdown(f"**Hook:** `{chosen.get('hook_type', '—')}`")
@@ -1169,8 +1169,8 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                             st.markdown(f"**Headline:** {ad['ad_creative_link_title']}")
                         st.markdown(f"**Body:** {(ad.get('ad_creative_body') or '—')[:300]}")
                         st.markdown(f"**CTA:** {ad.get('cta_type', '—')}")
-                        if ad.get("ad_snapshot_url"):
-                            st.markdown(f"[🔗 View Ad]({ad['ad_snapshot_url']})")
+                        ad_lib_url = f"https://www.facebook.com/ads/library/?id={ad.get('ad_id','')}"
+                        st.markdown(f"[🔗 View on Facebook Ad Library]({ad_lib_url})")
                     with wc2:
                         st.markdown("**🧠 What makes it work**")
                         st.markdown(f"**Hook:** `{ad.get('hook_type', '—')}`")

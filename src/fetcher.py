@@ -185,7 +185,7 @@ def _normalize_unit(unit: dict) -> dict | None:
         "display_format": snap.get("display_format") or None,
         "ad_delivery_start_time": start_str,
         "ad_delivery_stop_time": stop_str,
-        "ad_snapshot_url": f"https://www.facebook.com/ads/archive/render_ad/?id={ad_id}",
+        "ad_snapshot_url": f"https://www.facebook.com/ads/library/?id={ad_id}",
         "ad_image_urls": images,
         "ad_video_urls": videos,
         "ad_cards": cards,

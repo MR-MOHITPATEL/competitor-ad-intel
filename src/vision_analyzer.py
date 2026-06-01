@@ -51,6 +51,74 @@ VISION_SCHEMA = """{
 }"""
 
 
+_PROJECT_ROOT = Path(__file__).parent.parent
+_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; AdIntelBot/1.0)"}
+_EXT_MAP = {
+    "image/jpeg": ".jpg", "image/jpg": ".jpg",
+    "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
+}
+
+
+def _ensure_local_image(ad: dict) -> str | None:
+    """
+    Guarantee a local image file exists for this ad and return its path.
+
+    Priority:
+      1. ad_image_urls — if any entry is an existing local path, use it.
+      2. ad_remote_image_urls — download to data/raw/images/<page_label>/ and return path.
+      3. Return None if nothing works.
+    """
+    ad_id = ad.get("ad_id", "unknown")
+
+    # 1. Check existing local paths in ad_image_urls
+    for url in ad.get("ad_image_urls") or []:
+        p = Path(url)
+        if p.exists():
+            return str(p)
+
+    # 2. Download from remote URLs
+    remote_urls = (
+        ad.get("ad_remote_image_urls")
+        or [u for u in (ad.get("ad_image_urls") or []) if str(u).startswith("http")]
+        or ([ad["primary_image_url"]] if ad.get("primary_image_url") and str(ad["primary_image_url"]).startswith("http") else [])
+    )
+
+    if not remote_urls:
+        return None
+
+    # Derive page label for folder naming
+    page_label = (ad.get("page_name") or "").strip().lower().replace(" ", "_")
+    page_label = "".join(c if c.isalnum() or c == "_" else "_" for c in page_label) or "ads"
+    img_dir = _PROJECT_ROOT / "data" / "raw" / "images" / page_label
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    for url in remote_urls[:3]:  # try up to 3 URLs
+        url_str = str(url)
+        try:
+            resp = requests.get(url_str, headers=_HEADERS, timeout=20)
+            resp.raise_for_status()
+            ct = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+            if not ct.startswith("image/"):
+                continue
+            ext = _EXT_MAP.get(ct, ".jpg")
+            fname = url_str.split("?")[0].split("/")[-1][:60] or f"{ad_id}_0"
+            dest = img_dir / f"{ad_id}_0_{fname}"
+            if not dest.suffix:
+                dest = dest.with_suffix(ext)
+            dest.write_bytes(resp.content)
+            logger.debug("Downloaded image for %s → %s", ad_id, dest.name)
+            # Update the ad's local path so future runs skip download
+            urls = ad.get("ad_image_urls") or []
+            if not any(Path(u).exists() for u in urls):
+                ad["ad_image_urls"] = [str(dest)] + [u for u in urls if not str(u).startswith(str(_PROJECT_ROOT))]
+                ad["primary_image_url"] = str(dest)
+            return str(dest)
+        except Exception as e:
+            logger.debug("Remote download failed (%s): %s", url_str[:80], e)
+
+    return None
+
+
 def load_image_as_base64(source: str, timeout: int = 20) -> tuple[str, str]:
     path = Path(source)
     if path.exists():
@@ -135,14 +203,22 @@ def analyze_with_gemini(ad: dict, google_api_key: str) -> dict:
     ad_id = ad.get("ad_id", "unknown")
     image_urls = (
         ad.get("ad_image_urls")
+        or ad.get("ad_remote_image_urls")
         or ([ad["primary_image_url"]] if ad.get("primary_image_url") else [])
-        or ([ad["ad_snapshot_url"]] if ad.get("ad_snapshot_url") else [])
     )
+    # Filter out HTML snapshot pages — they are not image URLs
+    image_urls = [u for u in (image_urls or []) if not str(u).endswith("render_ad/")]
 
     if not image_urls:
         return {"ad_id": ad_id, "error": "no_image_url"}
 
-    image_part, used_url = _build_image_part(image_urls, ad_id)
+    # Download image locally first (if not already on disk) — works on hosted servers
+    local_path = _ensure_local_image(ad)
+    if local_path:
+        image_part, used_url = _build_image_part([local_path], ad_id)
+    else:
+        image_part, used_url = _build_image_part(image_urls, ad_id)
+
     if image_part is None:
         return {"ad_id": ad_id, "error": "image_fetch_failed"}
 
@@ -198,15 +274,20 @@ def analyze_with_groq(pool: GroqKeyPool, ad: dict) -> dict:
     ad_id = ad.get("ad_id", "unknown")
     image_urls = (
         ad.get("ad_image_urls")
+        or ad.get("ad_remote_image_urls")
         or ([ad["primary_image_url"]] if ad.get("primary_image_url") else [])
-        or ([ad["ad_snapshot_url"]] if ad.get("ad_snapshot_url") else [])
     )
+    image_urls = [u for u in (image_urls or []) if not str(u).endswith("render_ad/")]
 
     if not image_urls:
         return {"ad_id": ad_id, "error": "no_image_url"}
 
+    # Download image locally first if not already on disk
+    local_path = _ensure_local_image(ad)
+    urls_to_try = [local_path] if local_path else image_urls
+
     image_data, media_type = None, None
-    for url in image_urls:
+    for url in urls_to_try:
         try:
             image_data, media_type = load_image_as_base64(url)
             break
