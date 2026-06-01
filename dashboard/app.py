@@ -24,12 +24,19 @@ DATA_SCORED  = ROOT / "data" / "scored"
 DATA_ANALYZED = ROOT / "data" / "analyzed"
 DATA_MASTER  = ROOT / "data" / "raw" / "master"
 
+# ── Page config — must be first Streamlit call ────────────────────────────────
+st.set_page_config(
+    page_title="Ad Intel — Competitor Research",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
 # Ensure data dirs exist (important on first run / hosted server)
 for _d in [DATA_RAW, DATA_SCORED, DATA_ANALYZED, DATA_MASTER]:
     _d.mkdir(parents=True, exist_ok=True)
 
 # ── Supabase sync (once per session on hosted server) ─────────────────────────
-# Pull all JSON files from Supabase to local disk so Path.glob() works normally.
 if "supabase_synced" not in st.session_state:
     try:
         from utils import sync_from_supabase
@@ -39,14 +46,6 @@ if "supabase_synced" not in st.session_state:
     except Exception:
         pass
     st.session_state["supabase_synced"] = True
-
-# ── Page config ────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Ad Intel — Competitor Research",
-    page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
