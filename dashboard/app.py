@@ -1271,7 +1271,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                             with gallery_cols[gi % 4]:
                                 if img_url:
                                     try:
-                                                        src = resolve_image(img_url) or img_url
+                                        src = resolve_image(img_url) or img_url
                                         st.image(src, use_container_width=True, caption=aid[:20])
                                     except Exception:
                                         st.markdown(f"[{aid[:15]}]")
@@ -1350,7 +1350,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                             with gallery_cols[gi % 4]:
                                 if img_url:
                                     try:
-                                                        src = resolve_image(img_url) or img_url
+                                        src = resolve_image(img_url) or img_url
                                         st.image(src, use_container_width=True, caption=aid[:20])
                                     except Exception:
                                         st.markdown(f"[{aid[:15]}]")
