@@ -118,10 +118,38 @@ def sync_from_supabase(project_root: Path | None = None) -> int:
 
     for prefix in prefixes:
         try:
-            items = sb.storage.from_(_SUPABASE_BUCKET).list(prefix)
+            # list() only returns direct children — use limit+offset to get all
+            items = sb.storage.from_(_SUPABASE_BUCKET).list(
+                prefix, {"limit": 500, "offset": 0}
+            )
             for item in items or []:
                 name = item.get("name", "")
-                if not name or not name.endswith(".json"):
+                if not name:
+                    continue
+                # Item is a sub-folder — recurse one level
+                if not name.endswith(".json"):
+                    sub_prefix = f"{prefix}/{name}"
+                    try:
+                        sub_items = sb.storage.from_(_SUPABASE_BUCKET).list(
+                            sub_prefix, {"limit": 500, "offset": 0}
+                        )
+                        for sub in sub_items or []:
+                            sub_name = sub.get("name", "")
+                            if sub_name and sub_name.endswith(".json"):
+                                key = f"{sub_prefix}/{sub_name}"
+                                local_path = root / key
+                                if local_path.exists():
+                                    continue
+                                try:
+                                    raw = sb.storage.from_(_SUPABASE_BUCKET).download(key)
+                                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                                    local_path.write_bytes(raw)
+                                    synced += 1
+                                    _logger.debug("Supabase sync: pulled %s", key)
+                                except Exception as e:
+                                    _logger.warning("Supabase sync: failed to pull %s — %s", key, e)
+                    except Exception as e:
+                        _logger.warning("Supabase sync: failed to list %s — %s", sub_prefix, e)
                     continue
                 key = f"{prefix}/{name}"
                 local_path = root / key
