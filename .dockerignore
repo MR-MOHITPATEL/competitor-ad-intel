@@ -1,0 +1,14 @@
+.env
+.git
+__pycache__
+*.pyc
+*.pyo
+data/raw/*.json
+data/raw/images/
+data/scored/
+data/analyzed/
+.venv
+venv
+*.egg-info
+.pytest_cache
+node_modules
