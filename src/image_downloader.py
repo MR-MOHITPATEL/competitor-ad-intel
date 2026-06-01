@@ -56,7 +56,14 @@ def download_for_ads(ads: list[dict], img_dir: Path) -> tuple[list[dict], int, i
         ad_id = ad.get("ad_id", "unknown")
         updated_urls: list[str] = []
 
-        for i, url in enumerate(ad.get("ad_image_urls") or []):
+        original_urls = list(ad.get("ad_image_urls") or [])
+        # Always preserve the original remote URLs so hosted servers can display images
+        if original_urls and not ad.get("ad_remote_image_urls"):
+            remote = [u for u in original_urls if str(u).startswith("http")]
+            if remote:
+                ad["ad_remote_image_urls"] = remote
+
+        for i, url in enumerate(original_urls):
             total += 1
             # Already a local path that exists — keep it
             local = Path(url)
@@ -147,6 +154,9 @@ def patch_scored(scored_path: str | Path, raw_path: str | Path) -> None:
         if ad_id in url_map:
             ad["ad_image_urls"] = url_map[ad_id].get("ad_image_urls", [])
             ad["primary_image_url"] = url_map[ad_id].get("primary_image_url")
+            remote = url_map[ad_id].get("ad_remote_image_urls")
+            if remote:
+                ad["ad_remote_image_urls"] = remote
 
     if isinstance(scored_data, dict):
         scored_data["scored_ads"] = scored_ads

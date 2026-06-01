@@ -184,6 +184,36 @@ for k, v in defaults.items():
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+def resolve_image(url: str) -> str:
+    """Return a displayable image source.
+    Local path → use as-is if it exists.
+    Local path that doesn't exist → return empty string (skip).
+    Remote URL → return as-is (works on hosted server).
+    """
+    if not url:
+        return ""
+    if str(url).startswith("http://") or str(url).startswith("https://"):
+        return url
+    p = Path(url)
+    return str(p) if p.exists() else ""
+
+def get_display_images(ad: dict) -> list[str]:
+    """Get displayable image URLs for an ad — prefers local, falls back to remote."""
+    local_urls = ad.get("ad_image_urls") or []
+    remote_urls = ad.get("ad_remote_image_urls") or []
+
+    result = []
+    for url in local_urls:
+        src = resolve_image(url)
+        if src:
+            result.append(src)
+
+    # If no local images resolved, use remote URLs
+    if not result:
+        result = [u for u in remote_urls if u]
+
+    return result
+
 def load_json(path: Path) -> dict | list:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -530,40 +560,42 @@ with right_col:
         else:
             st.info("No saved data found yet.")
 
-    # ── Download images ────────────────────────────────────────────────────────
-    if st.session_state.step_done.get(1):
-        _raw_for_dl = st.session_state.get("raw_path")
-        if _raw_for_dl is None:
-            _rf = sorted(DATA_RAW.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-            _raw_for_dl = _rf[0] if _rf else None
-        if _raw_for_dl:
-            _raw_for_dl = Path(_raw_for_dl)
-            _dl_stem = _raw_for_dl.stem.split("_20")[0]
-            _img_folder = DATA_RAW / "images" / _dl_stem
-            _img_count = sum(1 for _ in _img_folder.glob("*.*")) if _img_folder.exists() else 0
-            with st.expander("🖼️ Ad Images", expanded=_img_count == 0):
-                if _img_count == 0:
-                    st.warning("No local images found. Download them for better vision analysis.")
-                else:
-                    st.success(f"{_img_count} images saved locally for `{_dl_stem}`.")
-                if st.button("📥 Download Ad Images", key="dl_images"):
-                    with st.status("Downloading images…", expanded=True) as _dl_status:
-                        try:
-                            from image_downloader import run as dl_run, patch_scored
-                            _dl, _total = dl_run(_raw_for_dl, str(DATA_RAW))
-                            st.write(f"✅ Downloaded **{_dl} / {_total}** images")
-                            _scored_cands = sorted(
-                                DATA_SCORED.glob(f"{_dl_stem}*scored*.json"),
-                                key=lambda p: p.stat().st_mtime, reverse=True,
-                            )
-                            if _scored_cands:
-                                patch_scored(_scored_cands[0], _raw_for_dl)
-                            _dl_status.update(label=f"✅ {_dl}/{_total} images downloaded", state="complete")
-                            st.rerun()
-                        except Exception as _e:
-                            _dl_status.update(label=f"❌ Download failed: {_e}", state="error")
-
 st.divider()
+
+# ── Download images (outside expander to avoid nesting error) ─────────────────
+if st.session_state.step_done.get(1):
+    _raw_for_dl = st.session_state.get("raw_path")
+    if _raw_for_dl is None:
+        _rf = sorted(DATA_RAW.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        _raw_for_dl = _rf[0] if _rf else None
+    if _raw_for_dl:
+        _raw_for_dl = Path(_raw_for_dl)
+        _dl_stem = _raw_for_dl.stem.split("_20")[0]
+        _img_folder = DATA_RAW / "images" / _dl_stem
+        _img_count = sum(1 for _ in _img_folder.glob("*.*")) if _img_folder.exists() else 0
+        _di1, _di2 = st.columns([4, 1])
+        with _di1:
+            if _img_count == 0:
+                st.warning(f"⚠️ No local images for `{_dl_stem}` — download them for vision analysis.")
+            else:
+                st.info(f"🖼️ {_img_count} images saved locally for `{_dl_stem}`.")
+        with _di2:
+            if st.button("📥 Download Ad Images", key="dl_images"):
+                with st.status("Downloading images…", expanded=True) as _dl_status:
+                    try:
+                        from image_downloader import run as dl_run, patch_scored
+                        _dl, _total = dl_run(_raw_for_dl, str(DATA_RAW))
+                        st.write(f"✅ Downloaded **{_dl} / {_total}** images")
+                        _scored_cands = sorted(
+                            DATA_SCORED.glob(f"{_dl_stem}*scored*.json"),
+                            key=lambda p: p.stat().st_mtime, reverse=True,
+                        )
+                        if _scored_cands:
+                            patch_scored(_scored_cands[0], _raw_for_dl)
+                        _dl_status.update(label=f"✅ {_dl}/{_total} images downloaded", state="complete")
+                        st.rerun()
+                    except Exception as _e:
+                        _dl_status.update(label=f"❌ Download failed: {_e}", state="error")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1094,14 +1126,13 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                         st.markdown(f"**Core Claim:** {chosen.get('core_claim', '—')}")
                         st.markdown(f"**Target Audience:** {chosen.get('target_audience_signal', '—')}")
                         st.markdown(f"**Days Running:** {chosen.get('run_duration_days', '—')}")
-                        imgs = chosen.get("ad_image_urls") or []
+                        imgs = get_display_images(chosen)
                         if imgs:
                             img_cols = st.columns(min(len(imgs), 3))
                             for ci, img_url in enumerate(imgs[:3]):
                                 with img_cols[ci]:
                                     try:
-                                        src = Path(img_url) if Path(img_url).exists() else img_url
-                                        st.image(src, use_container_width=True)
+                                        st.image(img_url, use_container_width=True)
                                     except Exception:
                                         st.markdown(f"[Image {ci+1}]({img_url})")
 
@@ -1159,15 +1190,14 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                         else:
                             st.info("Run Step 4 to see image analysis.")
 
-                    imgs = ad.get("ad_image_urls") or []
+                    imgs = get_display_images(ad)
                     if imgs:
                         st.markdown("**Ad Images**")
                         img_cols = st.columns(min(len(imgs), 4))
                         for ci, img_url in enumerate(imgs[:4]):
                             with img_cols[ci]:
                                 try:
-                                    src = Path(img_url) if Path(img_url).exists() else img_url
-                                    st.image(src, use_container_width=True)
+                                    st.image(img_url, use_container_width=True)
                                 except Exception:
                                     st.markdown(f"[Image {ci+1}]({img_url})")
 
@@ -1241,7 +1271,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                             with gallery_cols[gi % 4]:
                                 if img_url:
                                     try:
-                                        src = Path(img_url) if Path(img_url).exists() else img_url
+                                                        src = resolve_image(img_url) or img_url
                                         st.image(src, use_container_width=True, caption=aid[:20])
                                     except Exception:
                                         st.markdown(f"[{aid[:15]}]")
@@ -1320,7 +1350,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                             with gallery_cols[gi % 4]:
                                 if img_url:
                                     try:
-                                        src = Path(img_url) if Path(img_url).exists() else img_url
+                                                        src = resolve_image(img_url) or img_url
                                         st.image(src, use_container_width=True, caption=aid[:20])
                                     except Exception:
                                         st.markdown(f"[{aid[:15]}]")
@@ -1436,11 +1466,10 @@ if _has_analysis:
                     st.markdown(f"**Ran:** {selected_ad_data.get('run_duration_days','?')} days")
                     st.markdown(f"**Winner:** {'✅ Yes' if selected_ad_data.get('is_winner') else '❌ No'}")
                 with _p2:
-                    _imgs = selected_ad_data.get("ad_image_urls") or []
+                    _imgs = get_display_images(selected_ad_data)
                     if _imgs:
                         try:
-                            _src = Path(_imgs[0]) if Path(_imgs[0]).exists() else _imgs[0]
-                            st.image(_src, use_container_width=True)
+                            st.image(_imgs[0], use_container_width=True)
                         except Exception:
                             pass
 
@@ -1526,7 +1555,7 @@ if _has_analysis:
                         if _url:
                             with _gcols[_gi]:
                                 try:
-                                    _src = Path(_url) if Path(_url).exists() else _url
+                                    _src = resolve_image(_url) or _url
                                     st.image(_src, use_container_width=True)
                                 except Exception:
                                     pass
