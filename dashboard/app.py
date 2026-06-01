@@ -483,7 +483,8 @@ with right_col:
                     if st.button("✅ Save & Use This File", key="save_upload", type="primary"):
                         DATA_MASTER.mkdir(parents=True, exist_ok=True)
                         save_path = DATA_MASTER / f"{file_label}_master.json"
-                        save_path.write_bytes(raw_bytes)
+                        from utils import save_json as _save_json
+                        _save_json(uploaded_data, save_path)  # writes local + uploads to Supabase
                         st.session_state.raw_path = save_path
                         st.session_state.step_done[1] = True
                         st.session_state.step_done[2] = False
