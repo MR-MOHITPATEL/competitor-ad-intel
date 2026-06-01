@@ -496,69 +496,59 @@ with right_col:
                 st.error(f"Could not read file: {_ue}")
 
     # ── Resume from file ───────────────────────────────────────────────────────
-    with st.expander("📂 Load from saved data", expanded=False):
-        st.caption("Already have data? Load it here to skip re-fetching.")
-        raw_files    = sorted(DATA_RAW.glob("*.json"),    key=lambda p: p.stat().st_mtime, reverse=True)
+    with st.expander("📂 Load from saved data", expanded=True):
+        st.caption("Pick a competitor to work with — all data is loaded automatically.")
+        master_files = sorted(DATA_MASTER.glob("*_master.json"), key=lambda p: p.stat().st_mtime, reverse=True)
         scored_files = sorted(DATA_SCORED.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
 
-        if scored_files:
-            selected_scored = st.selectbox(
-                "Load a scored file",
-                options=[None] + [p.name for p in scored_files],
-                format_func=lambda x: "— select —" if x is None else x,
-                key="resume_scored",
+        if master_files:
+            selected_master = st.selectbox(
+                "Select competitor",
+                options=[None] + [p.name for p in master_files],
+                format_func=lambda x: "— select —" if x is None else x.replace("_master.json", "").replace("_", " ").title(),
+                key="resume_master",
             )
-            if selected_scored and st.button("✅ Load this file", key="use_scored"):
-                chosen = DATA_SCORED / selected_scored
+            if selected_master and st.button("✅ Load", key="use_master"):
+                chosen = DATA_MASTER / selected_master
                 data = load_json(chosen)
-                ads = data.get("scored_ads", [])
-                winners = sum(1 for a in ads if a.get("is_winner"))
-                label = chosen.stem.replace("_scored", "")
-                st.session_state.scored_path = chosen
+                ads = data.get("ads", data) if isinstance(data, dict) else data
+                label = chosen.stem.replace("_master", "")
+                st.session_state.raw_path = chosen
                 st.session_state.page_label = label
                 st.session_state.step_done[1] = True
-                st.session_state.step_done[2] = True
-                st.session_state.step_counts[1] = "loaded"
-                st.session_state.step_counts[2] = f"{winners} winners"
+                st.session_state.step_counts[1] = f"{len(ads)} ads"
+                # Auto-load any existing scored/analyzed files for this competitor
+                scored_p = DATA_SCORED / f"{label}_scored.json"
+                if scored_p.exists():
+                    sc_data = load_json(scored_p)
+                    sc_ads = sc_data.get("scored_ads", [])
+                    winners = sum(1 for a in sc_ads if a.get("is_winner"))
+                    st.session_state.scored_path = scored_p
+                    st.session_state.step_done[2] = True
+                    st.session_state.step_counts[2] = f"{winners} winners"
                 for step_n, fname, key in [
-                    (3, f"{label}_text_analysis.json",   "text"),
-                    (4, f"{label}_vision_analysis.json", "vision"),
-                    (5, f"{label}_aggregated_themes.json", "themes"),
-                    (6, f"{label}_visual_roots.json",    "vroots"),
-                    (7, f"{label}_roots.json",           "roots"),
+                    (3, f"{label}_text_analysis.json",    "text"),
+                    (4, f"{label}_vision_analysis.json",  "vision"),
+                    (5, f"{label}_aggregated_themes.json","themes"),
+                    (6, f"{label}_visual_roots.json",     "vroots"),
+                    (7, f"{label}_roots.json",            "roots"),
                 ]:
                     p = DATA_ANALYZED / fname
                     if p.exists():
                         d = load_json(p)
                         counts = {
-                            "text": f"{len(d)} analyzed",
+                            "text":   f"{len(d)} analyzed",
                             "vision": f"{len(d)} images",
                             "themes": f"{len(d.get('top_themes',[]))} themes",
                             "vroots": f"{len(d.get('visual_roots',[]))} visual roots",
-                            "roots": f"{len(d.get('roots',[]))} strategy roots",
+                            "roots":  f"{len(d.get('roots',[]))} strategy roots",
                         }
                         st.session_state.step_done[step_n] = True
                         st.session_state.step_counts[step_n] = counts[key]
-                st.success("Loaded! Results are ready to view.")
-                st.rerun()
-        elif raw_files:
-            selected_raw = st.selectbox(
-                "Load a raw ads file",
-                options=[None] + [p.name for p in raw_files],
-                format_func=lambda x: "— select —" if x is None else x,
-                key="resume_raw",
-            )
-            if selected_raw and st.button("✅ Load this file", key="use_raw"):
-                chosen = DATA_RAW / selected_raw
-                data = load_json(chosen)
-                ads = data.get("ads", [])
-                st.session_state.raw_path = chosen
-                st.session_state.step_done[1] = True
-                st.session_state.step_counts[1] = f"{len(ads)} ads"
-                st.success(f"Loaded {len(ads)} ads — Step 2 unlocked.")
+                st.success(f"Loaded {len(ads)} ads for {label.replace('_',' ').title()}!")
                 st.rerun()
         else:
-            st.info("No saved data found yet.")
+            st.info("No competitor data found yet. Ask your team to upload a master file.")
 
 st.divider()
 
