@@ -536,12 +536,13 @@ with right_col:
                     p = DATA_ANALYZED / fname
                     if p.exists():
                         d = load_json(p)
+                        _dget = d.get if isinstance(d, dict) else {}.get
                         counts = {
                             "text":   f"{len(d)} analyzed",
                             "vision": f"{len(d)} images",
-                            "themes": f"{len(d.get('top_themes',[]))} themes",
-                            "vroots": f"{len(d.get('visual_roots',[]))} visual roots",
-                            "roots":  f"{len(d.get('roots',[]))} strategy roots",
+                            "themes": f"{len(_dget('top_themes', d if isinstance(d, list) else []))} themes",
+                            "vroots": f"{len(_dget('visual_roots', d if isinstance(d, list) else []))} visual roots",
+                            "roots":  f"{len(_dget('roots', d if isinstance(d, list) else []))} strategy roots",
                         }
                         st.session_state.step_done[step_n] = True
                         st.session_state.step_counts[step_n] = counts[key]
