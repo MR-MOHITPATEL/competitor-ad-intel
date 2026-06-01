@@ -86,8 +86,49 @@ def _extract_json(raw: str) -> str:
     return raw[start:end]
 
 
+def _build_image_part(image_urls: list, ad_id: str):
+    """
+    Build a Gemini image Part from the first working URL.
+    - Remote URLs (http/https): passed directly via from_uri — no download needed.
+    - Local file paths: read and base64-encode as before.
+    Returns (part, used_url) or (None, None) on failure.
+    """
+    from google.genai import types
+
+    for url in image_urls:
+        url_str = str(url)
+        # ── Remote URL: let Gemini fetch it directly ──────────────────────────
+        if url_str.startswith("http://") or url_str.startswith("https://"):
+            # Detect mime type from extension; default to jpeg
+            ext = url_str.split("?")[0].rsplit(".", 1)[-1].lower()
+            mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                    "png": "image/png", "webp": "image/webp",
+                    "gif": "image/gif"}.get(ext, "image/jpeg")
+            try:
+                return types.Part.from_uri(file_uri=url_str, mime_type=mime), url_str
+            except Exception as e:
+                logger.debug("from_uri failed (%s): %s — trying base64", url_str[:80], e)
+                # Fall through to base64 download below
+
+        # ── Local file or failed URI: download + base64 ───────────────────────
+        try:
+            image_data, media_type = load_image_as_base64(url_str)
+            return types.Part.from_bytes(
+                data=base64.b64decode(image_data),
+                mime_type=media_type,
+            ), url_str
+        except Exception as e:
+            logger.debug("Image load failed (%s): %s", url_str[:80], e)
+
+    return None, None
+
+
 def analyze_with_gemini(ad: dict, google_api_key: str) -> dict:
-    """Analyze a single ad image using Gemini 2.5 Flash (google-genai SDK)."""
+    """Analyze a single ad image using Gemini 2.5 Flash.
+
+    Uses from_uri for remote URLs (no download) so this works on hosted servers
+    that don't have local image files. Falls back to base64 for local paths.
+    """
     from google import genai
     from google.genai import types
 
@@ -101,15 +142,8 @@ def analyze_with_gemini(ad: dict, google_api_key: str) -> dict:
     if not image_urls:
         return {"ad_id": ad_id, "error": "no_image_url"}
 
-    image_data, media_type = None, None
-    for url in image_urls:
-        try:
-            image_data, media_type = load_image_as_base64(url)
-            break
-        except Exception as e:
-            logger.debug("Image load failed (%s): %s", str(url)[:80], e)
-
-    if image_data is None:
+    image_part, used_url = _build_image_part(image_urls, ad_id)
+    if image_part is None:
         return {"ad_id": ad_id, "error": "image_fetch_failed"}
 
     client = genai.Client(api_key=google_api_key)
@@ -126,13 +160,7 @@ def analyze_with_gemini(ad: dict, google_api_key: str) -> dict:
         try:
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
-                contents=[
-                    types.Part.from_bytes(
-                        data=base64.b64decode(image_data),
-                        mime_type=media_type,
-                    ),
-                    prompt,
-                ],
+                contents=[image_part, prompt],
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0.1,
