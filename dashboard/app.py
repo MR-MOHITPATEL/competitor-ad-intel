@@ -418,7 +418,7 @@ STEPS = [
     ("Analyze Images",       "AI reads every ad image — layout, colors, visual structure", "🖼️"),
     ("Find Themes",          "Discover the big strategic patterns across all ads",         "🎯"),
     ("Visual Format Types",  "Group ads by how they look — briefs for your designer",      "🖼️"),
-    ("Strategy Types",       "Group ads by how they persuade — copy frameworks for you",  "🧠"),
+    ("Layout Structures",    "Group ads by pure spatial layout — structural blueprints",   "📐"),
 ]
 
 left_col, right_col = st.columns([3, 2])
@@ -557,7 +557,7 @@ with right_col:
                     (4, f"{label}_vision_analysis.json",  "vision"),
                     (5, f"{label}_aggregated_themes.json","themes"),
                     (6, f"{label}_visual_roots.json",     "vroots"),
-                    (7, f"{label}_roots.json",            "roots"),
+                    (7, f"{label}_layout_roots.json",     "layouts"),
                 ]:
                     p = DATA_ANALYZED / fname
                     if p.exists():
@@ -583,11 +583,11 @@ with right_col:
                             _save_json(d, p)
 
                         counts = {
-                            "text":   f"{len(d)} analyzed",
-                            "vision": f"{len(d)} images",
-                            "themes": f"{len(_dget('top_themes', d if isinstance(d, list) else []))} themes",
-                            "vroots": f"{len(_dget('visual_roots', d if isinstance(d, list) else []))} visual roots",
-                            "roots":  f"{len(_dget('roots', d if isinstance(d, list) else []))} strategy roots",
+                            "text":    f"{len(d)} analyzed",
+                            "vision":  f"{len(d)} images",
+                            "themes":  f"{len(_dget('top_themes', d if isinstance(d, list) else []))} themes",
+                            "vroots":  f"{len(_dget('visual_roots', d if isinstance(d, list) else []))} visual roots",
+                            "layouts": f"{len(_dget('layout_roots', d if isinstance(d, list) else []))} layouts",
                         }
                         st.session_state.step_done[step_n] = True
                         st.session_state.step_counts[step_n] = counts[key]
@@ -918,26 +918,27 @@ if run_step[5]:
     st.rerun()
 
 
-# ── Step 7: Strategy Roots ─────────────────────────────────────────────────────
+# ── Step 7: Layout Structure Roots ────────────────────────────────────────────
 if run_step[6]:
     page_label = st.session_state.page_label
     if not page_label:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
                              for c in page_name.replace(" ", "_").lower())
 
-    with st.status("🧠 Finding persuasion strategies…", expanded=True) as status:
+    with st.status("📐 Finding layout structure roots…", expanded=True) as status:
         try:
-            text_path = DATA_ANALYZED / f"{page_label}_text_analysis.json"
-            text_ads  = load_json(text_path) if text_path.exists() else []
-            st.write(f"Clustering **{len(text_ads)} ads** by persuasion mechanism…")
+            vision_path = DATA_ANALYZED / f"{page_label}_vision_analysis.json"
+            vision_ads  = load_json(vision_path) if vision_path.exists() else []
+            valid = [a for a in vision_ads if not a.get("error") and a.get("visual_format")]
+            st.write(f"Clustering **{len(valid)} ads** by pure spatial layout structure…")
             cmd = [
-                sys.executable, "-u", str(SRC / "root_discoverer.py"),
+                sys.executable, "-u", str(SRC / "layout_discoverer.py"),
                 "--page-label", page_label,
                 "--analyzed-dir", str(DATA_ANALYZED), "--scored-dir", str(DATA_SCORED),
             ] + (["--force"] if force else [])
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
             spinner_text = st.empty()
-            spinner_text.text("⏳ AI is finding persuasion archetypes…")
+            spinner_text.text("⏳ AI is finding layout structure blueprints…")
             log_lines: list[str] = []
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -950,16 +951,15 @@ if run_step[6]:
             if log_lines:
                 with st.expander("📋 Log", expanded=False):
                     st.code("\n".join(log_lines[-40:]), language=None)
-            out_path = DATA_ANALYZED / f"{page_label}_roots.json"
+            out_path = DATA_ANALYZED / f"{page_label}_layout_roots.json"
             if not out_path.exists():
                 raise RuntimeError(f"Output not found: {out_path}")
-            roots_data = load_json(out_path)
-            n_roots = len(roots_data.get("roots", []))
-            st.write(f"✅ **{n_roots} strategy types** discovered")
-            # Turn off run_all when last step completes
+            layout_data = load_json(out_path)
+            n_layouts = len(layout_data.get("layout_roots", []))
+            st.write(f"✅ **{n_layouts} layout structures** discovered")
             st.session_state.run_all = False
-            mark_done(7, f"{n_roots} strategy types")
-            status.update(label=f"✅ {n_roots} persuasion strategy types found", state="complete")
+            mark_done(7, f"{n_layouts} layouts")
+            status.update(label=f"✅ {n_layouts} layout structure roots found", state="complete")
         except Exception as e:
             st.session_state.run_all = False
             status.update(label=f"❌ Failed: {e}", state="error")
@@ -991,7 +991,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
     text_path         = DATA_ANALYZED / f"{page_label}_text_analysis.json"
     vision_path       = DATA_ANALYZED / f"{page_label}_vision_analysis.json"
     themes_path       = DATA_ANALYZED / f"{page_label}_aggregated_themes.json"
-    roots_path        = DATA_ANALYZED / f"{page_label}_roots.json"
+    layout_roots_path = DATA_ANALYZED / f"{page_label}_layout_roots.json"
     visual_roots_path = DATA_ANALYZED / f"{page_label}_visual_roots.json"
     scored_path       = DATA_SCORED / f"{page_label}_scored.json"
     if not scored_path.exists():
@@ -1000,7 +1000,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
     text_data          = load_json(text_path)          if text_path.exists()         else []
     vision_data        = load_json(vision_path)        if vision_path.exists()        else []
     themes_data        = load_json(themes_path)        if themes_path.exists()        else {}
-    roots_data_loaded  = load_json(roots_path)         if roots_path.exists()         else {}
+    layout_roots_data  = load_json(layout_roots_path)  if layout_roots_path.exists()  else {}
     visual_roots_data_loaded = load_json(visual_roots_path) if visual_roots_path.exists() else {}
     scored_data        = load_json(scored_path)        if scored_path and scored_path.exists() else {}
     scored_ads         = scored_data.get("scored_ads", scored_data) if isinstance(scored_data, dict) else scored_data
@@ -1009,18 +1009,18 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
     vision_map = {a.get("ad_id"): a for a in vision_data if a.get("ad_id")}
     scored_map = {a.get("ad_id"): a for a in scored_ads  if a.get("ad_id")}
 
-    ad_root_map: dict[str, dict] = {}
-    for root in roots_data_loaded.get("roots", []):
+    ad_layout_map: dict[str, dict] = {}
+    for root in layout_roots_data.get("layout_roots", []):
         for aid in root.get("ad_ids", []):
-            ad_root_map[aid] = root
+            ad_layout_map[aid] = root
 
     all_ids = set(text_map) | set(scored_map)
     for aid in all_ids:
         row = {**(scored_map.get(aid) or {}), **(text_map.get(aid) or {})}
         if aid in vision_map:
             row["_visual"] = vision_map[aid]
-        if aid in ad_root_map:
-            row["_root"] = ad_root_map[aid]
+        if aid in ad_layout_map:
+            row["_root"] = ad_layout_map[aid]
         merged.append(row)
     merged.sort(key=lambda a: a.get("run_duration_days") or 0, reverse=True)
     winners = [a for a in merged if a.get("is_winner")]
@@ -1040,9 +1040,9 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
     if visual_roots_data_loaded:
         n_vr = len(visual_roots_data_loaded.get("visual_roots", []))
         stats_html += f'<span class="stat-pill">🖼️ <strong>{n_vr}</strong> visual types</span>'
-    if roots_data_loaded:
-        n_sr = len(roots_data_loaded.get("roots", []))
-        stats_html += f'<span class="stat-pill">🧠 <strong>{n_sr}</strong> strategy types</span>'
+    if layout_roots_data:
+        n_lr = len(layout_roots_data.get("layout_roots", []))
+        stats_html += f'<span class="stat-pill">📐 <strong>{n_lr}</strong> layout structures</span>'
     st.markdown(stats_html, unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -1051,7 +1051,7 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
         "📋 All Ads",
         "🏆 Winners",
         "🖼️ Visual Format Types",
-        "🧠 Strategy Types",
+        "📐 Layout Structures",
     ])
 
     # ── Tab 1: Themes ──────────────────────────────────────────────────────────
@@ -1316,68 +1316,63 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                         st.caption(f"Ad IDs: {', '.join(vroot['ad_ids'][:5])}" +
                                    (" …" if len(vroot['ad_ids']) > 5 else ""))
 
-    # ── Tab 5: Strategy Types ──────────────────────────────────────────────────
+    # ── Tab 5: Layout Structures ───────────────────────────────────────────────
     with tab5:
-        if not roots_data_loaded:
-            st.info("Run Step 7 (Strategy Types) to see how competitors persuade their audience.")
+        if not layout_roots_data:
+            st.info("Run Step 7 (Layout Structures) to see the spatial blueprints competitors use.")
         else:
-            roots_list        = roots_data_loaded.get("roots", [])
-            dominant_root_id  = roots_data_loaded.get("dominant_root", "")
-            underused_strategy = roots_data_loaded.get("underused_roots", [])
-            summary           = roots_data_loaded.get("summary", "")
+            layout_list      = layout_roots_data.get("layout_roots", [])
+            dominant_layout  = layout_roots_data.get("dominant_layout", "")
+            underused_layouts = layout_roots_data.get("underused_layouts", [])
+            summary          = layout_roots_data.get("summary", "")
 
             if summary:
                 st.markdown(
-                    f'<div class="banner-blue"><strong>🧠 Strategy Summary</strong><br>{summary}</div>',
+                    f'<div class="banner-blue"><strong>📐 Layout Summary</strong><br>{summary}</div>',
                     unsafe_allow_html=True,
                 )
-            if underused_strategy:
-                st.success(f"💡 **Gaps your brand could own**: {'  ·  '.join(underused_strategy)}")
+            if underused_layouts:
+                st.success(f"💡 **Untapped layouts**: {'  ·  '.join(underused_layouts)}")
 
-            st.markdown(f"#### 🧠 {len(roots_list)} Persuasion Strategy Types")
+            st.markdown(f"#### 📐 {len(layout_list)} Layout Structure Roots")
 
-            for root in roots_list:
-                rid          = root.get("root_id", "")
-                is_dominant  = rid == dominant_root_id
-                emoji        = root.get("root_emoji", "🧠")
-                name         = root.get("root_name", rid)
-                ad_count     = root.get("ad_count") or len(root.get("ad_ids", []))
-                desc         = root.get("description", "")
+            for layout in layout_list:
+                lid          = layout.get("layout_id", "")
+                is_dominant  = lid == dominant_layout
+                emoji        = layout.get("layout_emoji", "📐")
+                name         = layout.get("layout_name", lid)
+                ad_count     = layout.get("ad_count") or len(layout.get("ad_ids", []))
+                desc         = layout.get("description", "")
                 dominant_tag = " 👑 Most Used" if is_dominant else ""
+                sat          = layout.get("saturation_signal", "")
+                sat_tag      = {"dominant": " 🔴 dominant", "common": " 🟡 common",
+                                "occasional": " 🟢 occasional", "rare": " 🔵 rare"}.get(sat, "")
 
-                with st.expander(f"{emoji} **{name}**  ·  {ad_count} ads{dominant_tag}", expanded=is_dominant):
+                with st.expander(
+                    f"{emoji} **{name}**  ·  {ad_count} ads{dominant_tag}{sat_tag}",
+                    expanded=is_dominant
+                ):
                     st.markdown(f"_{desc}_")
-                    st_data = root.get("strategy_template", {})
-                    mp      = root.get("messaging_pattern", {})
-                    rep     = root.get("replication_guide", "")
-                    why     = root.get("why_it_works", "")
 
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.markdown("**🎯 How They Do It**")
-                        st.markdown(f"- **Angle:** `{st_data.get('persuasion_angle','—')}`")
-                        st.markdown(f"- **Hook:** {st_data.get('hook_mechanism','—')}")
-                        st.markdown(f"- **Proof:** `{st_data.get('proof_mechanism','—')}`")
-                        if st_data.get("audience_entry_point"):
-                            st.caption(f"Audience mindset: {st_data['audience_entry_point']}")
-                    with c2:
-                        st.markdown("**🧪 The Psychology**")
-                        st.markdown(f"- **Emotional trigger:** {st_data.get('psychological_trigger','—')}")
-                        st.markdown(f"- **Hook type:** `{mp.get('hook_type','—')}`")
-                        st.markdown(f"- **Tone:** `{mp.get('emotional_tone','—')}`")
-                        if mp.get("typical_headline_structure"):
-                            st.caption(f"Headline pattern: {mp['typical_headline_structure']}")
+                    lc1, lc2 = st.columns(2)
+                    with lc1:
+                        st.markdown("**🗺️ Spatial Structure**")
+                        st.markdown(f"- **Zones:** `{layout.get('zones','—')}`")
+                        skeleton = layout.get("skeleton", "")
+                        if skeleton:
+                            st.caption(skeleton)
+                    with lc2:
+                        st.markdown("**🔄 Flexibility**")
+                        flexibility = layout.get("flexibility", "")
+                        if flexibility:
+                            st.markdown(flexibility)
 
-                    if why:
-                        st.markdown(
-                            f'<div class="banner-green"><strong>💡 Why this works:</strong> {why}</div>',
-                            unsafe_allow_html=True,
-                        )
-                    if rep:
-                        st.markdown("**📋 How to replicate this for your brand**")
-                        st.info(rep)
+                    brief = layout.get("structure_brief", "")
+                    if brief:
+                        st.markdown("**📋 Designer Spatial Blueprint**")
+                        st.info(brief)
 
-                    ad_images = root.get("ad_images", [])
+                    ad_images = layout.get("ad_images", [])
                     if ad_images:
                         st.markdown(f"**Sample Ads ({len(ad_images)} with images)**")
                         gallery_cols = st.columns(min(len(ad_images), 4))
@@ -1391,9 +1386,9 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
                                         st.image(src, use_container_width=True, caption=aid[:20])
                                     except Exception:
                                         st.markdown(f"[{aid[:15]}]")
-                    elif root.get("ad_ids"):
-                        st.caption(f"Ad IDs: {', '.join(root['ad_ids'][:5])}" +
-                                   (" …" if len(root['ad_ids']) > 5 else ""))
+                    elif layout.get("ad_ids"):
+                        st.caption(f"Ad IDs: {', '.join(layout['ad_ids'][:5])}" +
+                                   (" …" if len(layout['ad_ids']) > 5 else ""))
 
 else:
     if page_name and any(st.session_state.step_done.values()):
@@ -1555,35 +1550,38 @@ if _has_analysis:
                 st.markdown(f"Used in **{selected_theme_data.get('frequency','?')} ads**")
 
     elif inspo_type == "Root":
-        _roots_source = roots_data_loaded if roots_data_loaded else {}
+        _roots_source = layout_roots_data if layout_roots_data else {}
         if not _roots_source:
-            for _rf in sorted(DATA_ANALYZED.glob("*_roots.json")):
+            for _rf in sorted(DATA_ANALYZED.glob("*_layout_roots.json")):
                 try:
                     _roots_source = load_json(_rf)
                     break
                 except Exception:
                     pass
-        _roots_list = _roots_source.get("roots", [])
+        _roots_list = _roots_source.get("layout_roots", [])
         if not _roots_list:
-            st.warning("No strategy types found. Run Step 7 first.")
+            st.warning("No layout structures found. Run Step 7 first.")
         else:
             root_options = {
-                f"{r.get('root_emoji','🌿')} {r.get('root_name', r.get('root_id',''))} "
+                f"{r.get('layout_emoji', r.get('root_emoji','📐'))} "
+                f"{r.get('layout_name', r.get('root_name', r.get('layout_id','')))} "
                 f"({r.get('ad_count') or len(r.get('ad_ids',[]))} ads)": r
                 for r in _roots_list
             }
-            chosen_root_label = st.selectbox("Pick a strategy type", list(root_options.keys()))
+            chosen_root_label = st.selectbox("Pick a layout structure", list(root_options.keys()))
             selected_root_data = root_options[chosen_root_label]
 
-            with st.expander("Strategy details", expanded=True):
+            with st.expander("Layout details", expanded=True):
                 st.markdown(f"_{selected_root_data.get('description','')}_")
-                vt = selected_root_data.get("visual_template", {})
-                mp = selected_root_data.get("messaging_pattern", {})
                 rc1, rc2 = st.columns(2)
                 with rc1:
-                    st.markdown(f"**Hook:** `{mp.get('hook_type','—')}`  ·  **Tone:** `{mp.get('emotional_tone','—')}`")
+                    st.markdown(f"**Zones:** `{selected_root_data.get('zones','—')}`")
+                    st.caption(selected_root_data.get("skeleton", ""))
                 with rc2:
-                    st.markdown(f"**Claim style:** {mp.get('claim_style','—')}")
+                    st.markdown(f"**Flexibility:** {selected_root_data.get('flexibility','—')}")
+                brief = selected_root_data.get("structure_brief", "")
+                if brief:
+                    st.info(brief)
                 _root_imgs = selected_root_data.get("ad_images", [])
                 if _root_imgs:
                     st.markdown("**Sample ads:**")
