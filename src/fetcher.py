@@ -714,8 +714,7 @@ def run(
     master_dir = Path(output_dir) / "master"
     master_dir.mkdir(parents=True, exist_ok=True)
     master_path = master_dir / f"{page_label}_master.json"
-    existing = _load_master(master_path)
-    existing_ids = {a["ad_id"] for a in existing if a.get("ad_id")}
+    existing, existing_ids = _load_master(master_path)
     merged = existing + [a for a in ads if a.get("ad_id") not in existing_ids]
     _save_master(master_path, merged, page_query, country, page_label)
     logger.info("Master updated: %d total ads → %s", len(merged), master_path)
