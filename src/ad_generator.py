@@ -346,7 +346,7 @@ def _call_llm(prompt: str) -> str:
                 config=gtypes.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0.7,
-                    max_output_tokens=3000,
+                    max_output_tokens=8192,
                     thinking_config=None,
                 ),
             )
@@ -354,11 +354,11 @@ def _call_llm(prompt: str) -> str:
         except Exception as e:
             logger.warning("Gemini failed (%s) — falling back to Groq.", e)
 
-    # Groq fallback
+    # Groq fallback — use a model with higher context
     client = GroqKeyPool().client
     response = client.chat.completions.create(
         model=GROQ_MODEL,
-        max_tokens=3000,
+        max_tokens=8000,
         temperature=0.7,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -407,11 +407,15 @@ def generate(
 
     raw = _call_llm(prompt)
 
-    if raw.startswith("```"):
-        raw = raw.split("```", 2)[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    # Strip markdown fences
+    if "```" in raw:
+        for part in raw.split("```"):
+            part = part.strip()
+            if part.startswith("json"):
+                part = part[4:].strip()
+            if part.startswith("{"):
+                raw = part
+                break
 
     # Extract outermost JSON object
     start = raw.find("{")
@@ -419,4 +423,25 @@ def generate(
     if start != -1 and end > 0:
         raw = raw[start:end]
 
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Response was truncated — retry once with a simpler prompt asking for shorter output
+        logger.warning("JSON truncated — retrying with shorter image prompt instruction.")
+        short_prompt = prompt + (
+            "\n\nIMPORTANT: Keep image_prompt under 400 words. Be concise but precise."
+        )
+        raw2 = _call_llm(short_prompt)
+        if "```" in raw2:
+            for part in raw2.split("```"):
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{"):
+                    raw2 = part
+                    break
+        s2 = raw2.find("{")
+        e2 = raw2.rfind("}") + 1
+        if s2 != -1 and e2 > 0:
+            raw2 = raw2[s2:e2]
+        return json.loads(raw2)
