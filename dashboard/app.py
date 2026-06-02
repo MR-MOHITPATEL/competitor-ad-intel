@@ -197,9 +197,14 @@ def resolve_image(url: str) -> str:
     return str(p) if p.exists() else ""
 
 def get_display_images(ad: dict) -> list[str]:
-    """Get displayable image URLs for an ad — prefers local, falls back to remote."""
+    """Get displayable image URLs — prefers permanent Supabase URLs, then local, then CDN."""
+    supabase_urls = ad.get("ad_supabase_image_urls") or []
     local_urls = ad.get("ad_image_urls") or []
     remote_urls = ad.get("ad_remote_image_urls") or []
+
+    # Supabase URLs are permanent — always prefer them
+    if supabase_urls:
+        return [u for u in supabase_urls if u]
 
     result = []
     for url in local_urls:
@@ -207,7 +212,7 @@ def get_display_images(ad: dict) -> list[str]:
         if src:
             result.append(src)
 
-    # If no local images resolved, use remote URLs
+    # If no local images resolved, use remote CDN URLs as last resort
     if not result:
         result = [u for u in remote_urls if u]
 

@@ -65,8 +65,9 @@ def _ensure_local_image(ad: dict) -> str | None:
 
     Priority:
       1. ad_image_urls — if any entry is an existing local path, use it.
-      2. ad_remote_image_urls — download to data/raw/images/<page_label>/ and return path.
-      3. Return None if nothing works.
+      2. ad_supabase_image_urls — download from permanent Supabase Storage URL.
+      3. ad_remote_image_urls — download from original CDN URL (may be expired).
+      4. Return None if nothing works.
     """
     ad_id = ad.get("ad_id", "unknown")
 
@@ -76,9 +77,10 @@ def _ensure_local_image(ad: dict) -> str | None:
         if p.exists():
             return str(p)
 
-    # 2. Download from remote URLs
+    # 2. Prefer Supabase permanent URLs over expiring CDN URLs
     remote_urls = (
-        ad.get("ad_remote_image_urls")
+        ad.get("ad_supabase_image_urls")
+        or ad.get("ad_remote_image_urls")
         or [u for u in (ad.get("ad_image_urls") or []) if str(u).startswith("http")]
         or ([ad["primary_image_url"]] if ad.get("primary_image_url") and str(ad["primary_image_url"]).startswith("http") else [])
     )

@@ -171,6 +171,52 @@ def sync_from_supabase(project_root: Path | None = None) -> int:
     return synced
 
 
+# ── Image storage (Supabase) ───────────────────────────────────────────────────
+
+_IMAGE_MIME = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+}
+
+def upload_image(local_path: str | Path, storage_key: str) -> str | None:
+    """Upload a local image to Supabase Storage. Returns public URL or None."""
+    sb = _supabase_client()
+    if not sb:
+        return None
+    local_path = Path(local_path)
+    if not local_path.exists():
+        return None
+    mime = _IMAGE_MIME.get(local_path.suffix.lower(), "image/jpeg")
+    try:
+        sb.storage.from_(_SUPABASE_BUCKET).upload(
+            storage_key,
+            local_path.read_bytes(),
+            {"upsert": "true", "content-type": mime},
+        )
+        url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        return f"{url}/storage/v1/object/public/{_SUPABASE_BUCKET}/{storage_key}"
+    except Exception as e:
+        _logger.warning("Supabase image upload failed for %s: %s", storage_key, e)
+        return None
+
+
+def get_supabase_image_url(storage_key: str) -> str | None:
+    """Return the public URL for an image already in Supabase Storage, or None if missing."""
+    sb = _supabase_client()
+    if not sb:
+        return None
+    try:
+        folder, _, fname = storage_key.rpartition("/")
+        items = sb.storage.from_(_SUPABASE_BUCKET).list(folder, {"limit": 500})
+        names = {i.get("name") for i in (items or [])}
+        if fname in names:
+            url = os.getenv("SUPABASE_URL", "").rstrip("/")
+            return f"{url}/storage/v1/object/public/{_SUPABASE_BUCKET}/{storage_key}"
+    except Exception:
+        pass
+    return None
+
+
 # ── Other utilities ────────────────────────────────────────────────────────────
 
 def get_logger(name: str) -> logging.Logger:

@@ -13,7 +13,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from utils import get_logger, load_json, save_json
+from utils import get_logger, load_json, save_json, upload_image
 
 logger = get_logger("image_downloader")
 
@@ -80,6 +80,13 @@ def download_for_ads(ads: list[dict], img_dir: Path) -> tuple[list[dict], int, i
             if saved:
                 updated_urls.append(str(saved))
                 downloaded += 1
+                # Upload to Supabase for permanent storage — never expires
+                storage_key = f"images/{img_dir.name}/{saved.name}"
+                sb_url = upload_image(saved, storage_key)
+                if sb_url:
+                    supabase_urls = ad.setdefault("ad_supabase_image_urls", [])
+                    if sb_url not in supabase_urls:
+                        supabase_urls.append(sb_url)
             else:
                 updated_urls.append(url)  # keep original as fallback
 
