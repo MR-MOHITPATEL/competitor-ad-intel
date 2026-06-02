@@ -187,9 +187,12 @@ def _call_llm_with_images(
         for item in image_items:
             url = item.get("url", "")
             if url and url.startswith("http"):
+                ext = url.split("?")[0].rsplit(".", 1)[-1].lower()
+                mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                        "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
                 try:
                     contents.append(
-                        gtypes.Part.from_uri(uri=url, mime_type="image/jpeg")
+                        gtypes.Part.from_uri(file_uri=url, mime_type=mime)
                     )
                     contents.append(f"[{item['idx']}] Ad ID: {item['ad_id']}")
                     images_sent += 1
