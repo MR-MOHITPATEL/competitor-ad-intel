@@ -162,9 +162,10 @@ def patch_scored(scored_path: str | Path, raw_path: str | Path) -> None:
         if ad_id in url_map:
             ad["ad_image_urls"] = url_map[ad_id].get("ad_image_urls", [])
             ad["primary_image_url"] = url_map[ad_id].get("primary_image_url")
-            remote = url_map[ad_id].get("ad_remote_image_urls")
-            if remote:
-                ad["ad_remote_image_urls"] = remote
+            for field in ("ad_remote_image_urls", "ad_supabase_image_urls"):
+                val = url_map[ad_id].get(field)
+                if val:
+                    ad[field] = val
 
     if isinstance(scored_data, dict):
         scored_data["scored_ads"] = scored_ads
