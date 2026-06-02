@@ -37,7 +37,7 @@ OUTPUT_SCHEMA = """{
   "headline": "<compelling ad headline, max 10 words — must match the story in the image_prompt>",
   "body_copy": "<2-4 sentence ad body copy — expands on the story started by the headline and image>",
   "cta": "<call-to-action text, max 5 words>",
-  "image_prompt": "<Ultra-specific Gemini Imagen 3 prompt. Follow this exact structure — every section is required:\\nBACKGROUND: [exact background color/texture, e.g. 'solid white #FFFFFF' or 'light grey gradient top-to-bottom']\\nLAYOUT ZONES: [describe the frame divided into exact spatial zones with proportions, e.g. 'TOP 25%: headline text block, full width. LEFT 45%: mechanism/body illustration, vertically centered. RIGHT 45%: product + vessel on platform, vertically centered. OVERLAY LEFT 20-50%: benefit checklist. BOTTOM 8%: fine-print disclaimer bar.']\\nHEADLINE ZONE: [exact text to render, font style, weight, size relative to frame, color — e.g. 'Text: BALANCE YOUR HORMONES FOR / A BETTER YOU. Two-line, ALL CAPS. Bold sans-serif. Line 1 black, Line 2 olive-green #6B7C3D. Fills top 20% width 90% centered.']\\nMECHANISM/ILLUSTRATION ZONE: [exact illustration — e.g. 'Semi-transparent pink anatomical uterus illustration, no text labels, soft glow, left-center zone, 40% frame height' — or 'none']\\nPRODUCT ZONE: [exact product placement — e.g. '1-liter brown glass bottle with white floral label, upright, bottom-anchored on a light grey circular platform. Clear glass of dark brown liquid placed to its left. Right-center zone, 45% frame height.']\\nBENEFIT CHECKLIST ZONE: [exact text lines, icon style, colors, position — e.g. '4 lines with green filled checkbox icons (#4CAF50): Line1: Healthy Regular Monthly Cycles / Line2: Relief from Hormonal Acne / Line3: Weight Management / Line4: Other Hormonal Symptoms. Left-center overlay, 14px equivalent, dark grey text.']\\nCOLOR PALETTE: [list every color with hex or precise description: background, headline colors, accent colors, icon colors, product colors]\\nPHOTOGRAPHY STYLE: [clean product shot or lifestyle or illustration-heavy; lighting; no shadows or soft shadow; photorealistic or graphic design flat]\\nDO NOT include: [list things to avoid — e.g. 'no people, no outdoor scenes, no gradients on text']>",
+  "image_prompt": "<Ultra-specific Gemini Imagen 3 prompt. ALWAYS start with: 'Square 1:1 ratio image. Use the exact product image provided by the user.' Then follow this structure — every section required:\\nBACKGROUND: [exact background color/texture]\\nLAYOUT ZONES: [frame divided into exact spatial zones with proportions — TOP/LEFT/RIGHT/CENTER/BOTTOM %]\\nHEADLINE ZONE: [exact text, font style, weight, size, color, position]\\nMECHANISM/ILLUSTRATION ZONE: [exact illustration description — or 'none']\\nPRODUCT ZONE: [USE THE USER-PROVIDED PRODUCT IMAGE HERE — exact placement, size, platform, props]\\nBENEFIT CHECKLIST ZONE: [exact text lines, icon style, colors, position]\\nCOLOR PALETTE: [every color with hex codes]\\nPHOTOGRAPHY STYLE: [lighting, render style, mood]\\nDO NOT include: [elements to avoid]>",
   "benefit_bullets": ["<benefit 1>", "<benefit 2>", "<benefit 3>", "<benefit 4>"],
   "creative_rationale": "<1-2 sentences: why this layout template works for this audience>"
 }"""
@@ -130,6 +130,10 @@ def _build_prompt_from_ad(
             if key_ingredient else ""
         )
         + f"\n"
+        f"MANDATORY IMAGE PROMPT RULES (apply to every generated image_prompt):\n"
+        f"  1. Always begin image_prompt with: 'Square 1:1 ratio image. Use the exact product image provided by the user.'\n"
+        f"  2. In PRODUCT ZONE always write: 'USE USER-PROVIDED PRODUCT IMAGE — place it [exact position/size]'\n"
+        f"  3. Never generate or describe a hypothetical product — the actual product image will be inserted\n\n"
         f"Return ONLY a JSON object matching this schema:\n{OUTPUT_SCHEMA}"
     )
 
