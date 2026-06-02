@@ -522,15 +522,36 @@ with right_col:
                 st.session_state.page_label = label
                 st.session_state.step_done[1] = True
                 st.session_state.step_counts[1] = f"{len(ads)} ads"
+
+                # Build Supabase URL map from master so visual roots can show images
+                _supabase_url_map = {
+                    a.get("ad_id"): (
+                        a.get("ad_supabase_image_urls")
+                        or a.get("ad_remote_image_urls")
+                        or a.get("ad_image_urls", [])
+                    )
+                    for a in ads if a.get("ad_id")
+                }
+
                 # Auto-load any existing scored/analyzed files for this competitor
                 scored_p = DATA_SCORED / f"{label}_scored.json"
                 if scored_p.exists():
                     sc_data = load_json(scored_p)
                     sc_ads = sc_data.get("scored_ads", [])
                     winners = sum(1 for a in sc_ads if a.get("is_winner"))
+                    # Also enrich supabase URL map from scored file
+                    for a in sc_ads:
+                        aid = a.get("ad_id")
+                        if aid and not _supabase_url_map.get(aid):
+                            _supabase_url_map[aid] = (
+                                a.get("ad_supabase_image_urls")
+                                or a.get("ad_remote_image_urls")
+                                or a.get("ad_image_urls", [])
+                            )
                     st.session_state.scored_path = scored_p
                     st.session_state.step_done[2] = True
                     st.session_state.step_counts[2] = f"{winners} winners"
+
                 for step_n, fname, key in [
                     (3, f"{label}_text_analysis.json",    "text"),
                     (4, f"{label}_vision_analysis.json",  "vision"),
@@ -542,6 +563,25 @@ with right_col:
                     if p.exists():
                         d = load_json(p)
                         _dget = d.get if isinstance(d, dict) else {}.get
+
+                        # Patch visual/strategy roots: replace local paths with Supabase URLs
+                        if key in ("vroots", "roots") and isinstance(d, dict):
+                            root_key = "visual_roots" if key == "vroots" else "roots"
+                            for root in d.get(root_key, []):
+                                patched = []
+                                for item in root.get("ad_images", []):
+                                    aid = item.get("ad_id", "")
+                                    img = item.get("image_url", "")
+                                    # Replace local Windows path with Supabase URL
+                                    if img and (img.startswith("C:\\") or img.startswith("/") or not img.startswith("http")):
+                                        urls = _supabase_url_map.get(aid, [])
+                                        img = urls[0] if urls else ""
+                                    patched.append({"ad_id": aid, "image_url": img})
+                                root["ad_images"] = patched
+                            # Save patched file back so future loads are instant
+                            from utils import save_json as _save_json
+                            _save_json(d, p)
+
                         counts = {
                             "text":   f"{len(d)} analyzed",
                             "vision": f"{len(d)} images",
@@ -551,6 +591,7 @@ with right_col:
                         }
                         st.session_state.step_done[step_n] = True
                         st.session_state.step_counts[step_n] = counts[key]
+
                 st.success(f"Loaded {len(ads)} ads for {label.replace('_',' ').title()}!")
                 st.rerun()
         else:
