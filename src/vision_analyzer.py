@@ -1,7 +1,7 @@
 """
-Analyze ad images via Gemini 2.5 Flash (primary) or Groq Vision (fallback).
+Analyze ad images via Gemini 2.5 Pro (primary) or Groq Vision (fallback).
 
-If GOOGLE_API_KEY is set in .env → uses Gemini 2.5 Flash (better layout understanding).
+If GOOGLE_API_KEY is set in .env → uses Gemini 2.5 Pro (best reasoning + vision).
 Otherwise → falls back to Groq llama-4-scout vision model.
 """
 
@@ -19,7 +19,7 @@ from utils import GroqKeyPool, get_logger, load_json, save_json
 logger = get_logger("vision_analyzer")
 
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.5-pro"
 
 SYSTEM_PROMPT = (
     "You are an expert visual advertising analyst and creative director for Health & Wellness brands. "

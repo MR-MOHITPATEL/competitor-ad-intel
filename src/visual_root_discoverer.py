@@ -30,7 +30,7 @@ from utils import GroqKeyPool, get_logger, load_json, save_json
 
 logger = get_logger("visual_root_discoverer")
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.5-pro"
 GROQ_FALLBACK_MODEL = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = (
