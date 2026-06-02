@@ -65,28 +65,29 @@ def download_for_ads(ads: list[dict], img_dir: Path) -> tuple[list[dict], int, i
 
         for i, url in enumerate(original_urls):
             total += 1
-            # Already a local path that exists — keep it
             local = Path(url)
             if local.exists():
-                updated_urls.append(url)
-                downloaded += 1
-                continue
+                # Already downloaded — just ensure it's also in Supabase
+                saved = local
+            else:
+                # Remote URL — try to download
+                url_path = url.split("?")[0].rstrip("/")
+                fname = url_path.split("/")[-1] or f"img_{i}"
+                dest = img_dir / f"{ad_id}_{i}_{fname[:60]}"
+                saved = _fetch_one(url, dest)
 
-            # Remote URL — try to download
-            url_path = url.split("?")[0].rstrip("/")
-            fname = url_path.split("/")[-1] or f"img_{i}"
-            dest = img_dir / f"{ad_id}_{i}_{fname[:60]}"
-            saved = _fetch_one(url, dest)
             if saved:
                 updated_urls.append(str(saved))
                 downloaded += 1
-                # Upload to Supabase for permanent storage — never expires
+                # Upload to Supabase if not already there
                 storage_key = f"images/{img_dir.name}/{saved.name}"
-                sb_url = upload_image(saved, storage_key)
-                if sb_url:
-                    supabase_urls = ad.setdefault("ad_supabase_image_urls", [])
-                    if sb_url not in supabase_urls:
-                        supabase_urls.append(sb_url)
+                existing_sb = [u for u in (ad.get("ad_supabase_image_urls") or []) if saved.name in u]
+                if not existing_sb:
+                    sb_url = upload_image(saved, storage_key)
+                    if sb_url:
+                        supabase_urls = ad.setdefault("ad_supabase_image_urls", [])
+                        if sb_url not in supabase_urls:
+                            supabase_urls.append(sb_url)
             else:
                 updated_urls.append(url)  # keep original as fallback
 
