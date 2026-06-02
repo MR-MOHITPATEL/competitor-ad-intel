@@ -19,7 +19,7 @@ from utils import GroqKeyPool, get_logger, load_json, save_json
 logger = get_logger("vision_analyzer")
 
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = (
     "You are an expert visual advertising analyst and creative director for Health & Wellness brands. "
