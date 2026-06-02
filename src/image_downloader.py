@@ -173,3 +173,13 @@ def patch_scored(scored_path: str | Path, raw_path: str | Path) -> None:
         save_json(scored_ads, scored_path)
 
     logger.info("Patched scored JSON with local image paths → %s", scored_path.name)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Download and upload images for a master/raw JSON file")
+    parser.add_argument("raw_path", help="Path to master or raw JSON file")
+    parser.add_argument("--output-dir", default="data/raw", help="Base output directory")
+    args = parser.parse_args()
+    downloaded, total = run(args.raw_path, args.output_dir)
+    print(f"Done: {downloaded} / {total} images processed.")
