@@ -332,14 +332,21 @@ def _build_prompt_from_visual_root(
 
 
 def _call_llm(prompt: str) -> str:
-    """Call Gemini 2.5 Flash (primary) or Groq (fallback)."""
+    """Call Gemini 2.5 Flash — required for high-quality ad generation."""
     google_api_key = os.getenv("GOOGLE_API_KEY", "").strip()
 
-    if google_api_key:
+    if not google_api_key:
+        raise EnvironmentError(
+            "GOOGLE_API_KEY is not set. Add it to your Streamlit secrets or .env file to use Generate Ad."
+        )
+
+    from google import genai
+    from google.genai import types as gtypes
+
+    client = genai.Client(api_key=google_api_key)
+
+    for attempt in range(3):
         try:
-            from google import genai
-            from google.genai import types as gtypes
-            client = genai.Client(api_key=google_api_key)
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
@@ -352,20 +359,16 @@ def _call_llm(prompt: str) -> str:
             )
             return response.text.strip()
         except Exception as e:
-            logger.warning("Gemini failed (%s) — falling back to Groq.", e)
+            err = str(e)
+            if "quota" in err.lower() or "429" in err or "rate" in err.lower():
+                import time
+                wait = 10 * (2 ** attempt)
+                logger.warning("Gemini rate limit — waiting %ds…", wait)
+                time.sleep(wait)
+            else:
+                raise
 
-    # Groq fallback — use a model with higher context
-    client = GroqKeyPool().client
-    response = client.chat.completions.create(
-        model=GROQ_MODEL,
-        max_tokens=8000,
-        temperature=0.7,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return response.choices[0].message.content.strip()
+    raise RuntimeError("Gemini rate limit exhausted after 3 attempts.")
 
 
 def generate(
