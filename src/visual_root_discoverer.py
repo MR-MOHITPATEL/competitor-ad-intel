@@ -292,9 +292,14 @@ def run(
         logger.error("JSON parse failed: %s\nRaw:\n%s", e, raw[:500])
         raise
 
-    # Attach image paths for dashboard rendering
+    # Attach image URLs for dashboard rendering — prefer permanent Supabase URLs
     ad_image_map = {
-        a.get("ad_id"): (a.get("ad_image_urls") or ([a["primary_image_url"]] if a.get("primary_image_url") else []))
+        a.get("ad_id"): (
+            a.get("ad_supabase_image_urls")
+            or a.get("ad_remote_image_urls")
+            or a.get("ad_image_urls")
+            or ([a["primary_image_url"]] if a.get("primary_image_url") else [])
+        )
         for a in scored_ads
     }
     for root in roots_data.get("visual_roots", []):
