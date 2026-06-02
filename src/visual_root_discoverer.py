@@ -145,7 +145,7 @@ def _call_llm(
                         system_instruction=SYSTEM_PROMPT,
                         temperature=0.2,
                         max_output_tokens=3000,
-                        thinking_config=gtypes.ThinkingConfig(thinking_budget=0),
+                        thinking_config=gtypes.ThinkingConfig(thinking_budget=1024),
                     ),
                 )
                 return response.text.strip()

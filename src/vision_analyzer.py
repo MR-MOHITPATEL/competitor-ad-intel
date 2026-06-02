@@ -243,7 +243,7 @@ def analyze_with_gemini(ad: dict, google_api_key: str) -> dict:
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0.1,
                     max_output_tokens=2048,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    thinking_config=types.ThinkingConfig(thinking_budget=1024),
                 ),
             )
 
