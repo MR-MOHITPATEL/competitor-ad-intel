@@ -19,8 +19,9 @@ from utils import GroqKeyPool, get_logger
 
 logger = get_logger("ad_generator")
 
-GEMINI_MODEL = "gemini-2.5-flash"
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+GEMINI_MODEL         = "gemini-2.5-flash"
+GEMINI_FALLBACK_MODEL = "gemini-2.0-flash"
+GROQ_MODEL           = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = (
     "You are a senior Health & Wellness creative director and prompt engineer specializing in "
@@ -345,30 +346,35 @@ def _call_llm(prompt: str) -> str:
 
     client = genai.Client(api_key=google_api_key)
 
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=gtypes.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.7,
-                    max_output_tokens=8192,
-                    thinking_config=None,
-                ),
-            )
-            return response.text.strip()
-        except Exception as e:
-            err = str(e)
-            if "quota" in err.lower() or "429" in err or "rate" in err.lower():
-                import time
-                wait = 10 * (2 ** attempt)
-                logger.warning("Gemini rate limit — waiting %ds…", wait)
-                time.sleep(wait)
-            else:
-                raise
+    for model in [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]:
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=gtypes.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.7,
+                        max_output_tokens=8192,
+                        thinking_config=None,
+                    ),
+                )
+                logger.info("Ad generated using %s.", model)
+                return response.text.strip()
+            except Exception as e:
+                err = str(e)
+                if "503" in err or "unavailable" in err.lower() or "overloaded" in err.lower():
+                    logger.warning("%s unavailable — trying fallback model.", model)
+                    break  # try next model
+                elif "quota" in err.lower() or "429" in err or "rate" in err.lower():
+                    import time
+                    wait = 10 * (2 ** attempt)
+                    logger.warning("Gemini rate limit — waiting %ds…", wait)
+                    time.sleep(wait)
+                else:
+                    raise
 
-    raise RuntimeError("Gemini rate limit exhausted after 3 attempts.")
+    raise RuntimeError("All Gemini models unavailable. Please try again in a few minutes.")
 
 
 def generate(
