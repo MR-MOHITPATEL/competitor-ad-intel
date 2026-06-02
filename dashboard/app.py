@@ -1443,14 +1443,15 @@ if _has_analysis:
 
     st.markdown("**Pick an inspiration source:**")
     inspo_type = st.radio(
-        "Inspiration type", ["Any Ad", "Theme", "Root"],
+        "Inspiration type", ["Any Ad", "Theme", "Root", "Visual Root"],
         horizontal=True, label_visibility="collapsed",
     )
 
-    selected_ad_data    = None
-    selected_theme_data = None
-    selected_root_data  = None
-    selected_visual_data = None
+    selected_ad_data      = None
+    selected_theme_data   = None
+    selected_root_data    = None
+    selected_visual_data  = None
+    selected_vroot_data   = None
 
     _all_ads: list[dict] = list(merged) if merged else []
     if not _all_ads:
@@ -1553,7 +1554,7 @@ if _has_analysis:
                 st.markdown(selected_theme_data.get("description", ""))
                 st.markdown(f"Used in **{selected_theme_data.get('frequency','?')} ads**")
 
-    else:  # Root
+    elif inspo_type == "Root":
         _roots_source = roots_data_loaded if roots_data_loaded else {}
         if not _roots_source:
             for _rf in sorted(DATA_ANALYZED.glob("*_roots.json")):
@@ -1597,9 +1598,70 @@ if _has_analysis:
                                 except Exception:
                                     pass
 
+    else:  # Visual Root
+        _vroots_source = {}
+        if st.session_state.page_label:
+            _vrf = DATA_ANALYZED / f"{st.session_state.page_label}_visual_roots.json"
+            if _vrf.exists():
+                try:
+                    _vroots_source = load_json(_vrf)
+                except Exception:
+                    pass
+        if not _vroots_source:
+            for _vrf in sorted(DATA_ANALYZED.glob("*_visual_roots.json")):
+                try:
+                    _vroots_source = load_json(_vrf)
+                    break
+                except Exception:
+                    pass
+
+        _vroots_list = _vroots_source.get("visual_roots", [])
+        if not _vroots_list:
+            st.warning("No visual roots found. Run Step 6 first.")
+        else:
+            vroot_options = {
+                f"{r.get('root_emoji','🖼️')} {r.get('root_name', r.get('root_id',''))} "
+                f"({r.get('ad_count') or len(r.get('ad_ids',[]))} ads)": r
+                for r in _vroots_list
+            }
+            chosen_vroot_label = st.selectbox("Pick a visual format", list(vroot_options.keys()))
+            selected_vroot_data = vroot_options[chosen_vroot_label]
+
+            with st.expander("Visual format details", expanded=True):
+                st.markdown(f"_{selected_vroot_data.get('description','')}_")
+
+                _vr_c1, _vr_c2 = st.columns(2)
+                with _vr_c1:
+                    st.markdown(f"**Layout:** `{selected_vroot_data.get('layout_structure','—')}`")
+                    st.markdown(f"**Content:** `{selected_vroot_data.get('content_type','—')}`")
+                    st.markdown(f"**Color mood:** `{selected_vroot_data.get('color_mood','—')}`")
+                with _vr_c2:
+                    _sat = selected_vroot_data.get('saturation_signal','—')
+                    _sat_color = {"dominant": "🔴", "common": "🟡", "occasional": "🟢", "rare": "🔵"}.get(_sat, "⚪")
+                    st.markdown(f"**Saturation:** {_sat_color} {_sat}")
+
+                _brief = selected_vroot_data.get("designer_brief", "")
+                if _brief:
+                    st.markdown("**Designer Brief:**")
+                    st.info(_brief)
+
+                _vroot_imgs = selected_vroot_data.get("ad_images", [])
+                if _vroot_imgs:
+                    st.markdown("**Sample ads using this format:**")
+                    _vgcols = st.columns(min(len(_vroot_imgs), 4))
+                    for _vgi, _vitem in enumerate(_vroot_imgs[:4]):
+                        _vurl = _vitem.get("image_url", "")
+                        if _vurl:
+                            with _vgcols[_vgi]:
+                                try:
+                                    _vsrc = resolve_image(_vurl) or _vurl
+                                    st.image(_vsrc, use_container_width=True)
+                                except Exception:
+                                    pass
+
     # ── Generate button ────────────────────────────────────────────────────────
     can_generate = bool(my_product and my_benefit and my_audience
-                        and (selected_ad_data or selected_theme_data or selected_root_data))
+                        and (selected_ad_data or selected_theme_data or selected_root_data or selected_vroot_data))
 
     if st.button("✨ Generate Ad", disabled=not can_generate, type="primary"):
         with st.spinner("Writing your ad…"):
@@ -1614,6 +1676,7 @@ if _has_analysis:
                     competitor_ad=selected_ad_data,
                     theme=selected_theme_data,
                     root=selected_root_data,
+                    visual_root=selected_vroot_data,
                     visual_analysis=selected_visual_data,
                 )
                 st.session_state["last_generated_ad"] = result

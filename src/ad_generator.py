@@ -1,14 +1,16 @@
 """
-Generate ad copy + Gemini image prompt for your product,
-inspired by a competitor winner ad or theme.
+Generate ad copy + image prompt for your product,
+inspired by a competitor winner ad, theme, strategy root, or visual root.
 
 The key principle: copy and image prompt must tell the SAME story.
-The visual analysis (story arc, emotional trigger, scene) drives both.
+Visual root drives the layout; strategy drives the messaging.
 
-Model: llama-3.3-70b-versatile
+Primary model: Gemini 2.5 Flash (GOOGLE_API_KEY in .env)
+Fallback model: llama-3.3-70b-versatile via Groq
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -17,7 +19,8 @@ from utils import GroqKeyPool, get_logger
 
 logger = get_logger("ad_generator")
 
-MODEL = "llama-3.3-70b-versatile"
+GEMINI_MODEL = "gemini-2.5-flash"
+GROQ_MODEL   = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = (
     "You are a senior Health & Wellness creative director and prompt engineer specializing in "
@@ -260,6 +263,111 @@ def _build_prompt_from_root(
     )
 
 
+def _build_prompt_from_visual_root(
+    product_name: str,
+    key_benefit: str,
+    target_audience: str,
+    visual_root: dict,
+    key_ingredient: str | None = None,
+    ingredient_benefit: str | None = None,
+) -> str:
+    ingredient_block = ""
+    if key_ingredient:
+        ingredient_block = (
+            f"  Key Ingredient: {key_ingredient}\n"
+            f"  Ingredient Properties: {ingredient_benefit or 'natural herb with therapeutic properties'}\n"
+            f"  INGREDIENT VISUAL NOTE: Raw {key_ingredient} (actual root/bark/herb pieces, "
+            f"photorealistic) must appear beside the product bottle with a callout label: "
+            f"'{key_ingredient} — {ingredient_benefit or 'natural & pure'}'.\n"
+        )
+
+    ad_count = visual_root.get("ad_count") or len(visual_root.get("ad_ids", []))
+    designer_brief = visual_root.get("designer_brief", "")
+    saturation = visual_root.get("saturation_signal", "common")
+
+    return (
+        f"MY PRODUCT:\n"
+        f"  Name: {product_name}\n"
+        f"  Key Benefit: {key_benefit}\n"
+        f"  Target Audience: {target_audience}\n"
+        f"{ingredient_block}\n"
+        f"VISUAL FORMAT TO USE — '{visual_root.get('root_name','')}' "
+        f"(seen in {ad_count} competitor ads, saturation: {saturation}):\n"
+        f"  Description: {visual_root.get('description','')}\n"
+        f"  Layout Structure: {visual_root.get('layout_structure','')}\n"
+        f"  Content Type: {visual_root.get('content_type','')}\n"
+        f"  Color Mood: {visual_root.get('color_mood','')}\n"
+        f"  Designer Brief: {designer_brief}\n\n"
+        f"YOUR TASK:\n"
+        f"1. Write COMPELLING ad COPY for my product ({product_name}):\n"
+        f"   - Headline: bold, benefit-driven, max 10 words\n"
+        f"   - Body: 2-3 sentences building on the headline, specific to {key_benefit}\n"
+        f"   - CTA: action-oriented, max 5 words\n"
+        f"   - 4 benefit bullets: short, punchy, specific\n\n"
+        f"2. Write a DETAILED IMAGE PROMPT for Midjourney / DALL-E / Canva AI that:\n"
+        f"   - EXACTLY follows the '{visual_root.get('root_name','')}' visual format\n"
+        f"   - Uses the designer brief as your blueprint: {designer_brief}\n"
+        f"   - Layout structure: {visual_root.get('layout_structure','')}\n"
+        f"   - Color mood: {visual_root.get('color_mood','')}\n"
+        f"   - Replaces competitor content with MY product ({product_name}) and MY benefit ({key_benefit})\n"
+        f"   - The prompt must be detailed enough for a designer to produce without seeing any reference\n"
+        f"   REQUIRED sections in image_prompt:\n"
+        f"   BACKGROUND: exact color/texture\n"
+        f"   LAYOUT ZONES: frame divided into exact spatial zones with proportions (TOP/LEFT/RIGHT/CENTER/BOTTOM %)\n"
+        f"   HEADLINE ZONE: exact text, font style, size, color, position\n"
+        f"   MECHANISM/ILLUSTRATION ZONE: exact illustration or 'none'\n"
+        f"   PRODUCT ZONE: exact product placement, size, platform, props\n"
+        f"   BENEFIT CHECKLIST ZONE: exact text lines, icon style, colors, position\n"
+        f"   COLOR PALETTE: every color with hex codes\n"
+        f"   PHOTOGRAPHY STYLE: lighting, render style, mood\n"
+        f"   DO NOT INCLUDE: list elements to avoid\n"
+        + (
+            f"   INGREDIENT ELEMENT (MANDATORY): photorealistic raw {key_ingredient} pieces "
+            f"beside the product bottle. Callout label: '{key_ingredient} — "
+            f"{ingredient_benefit or 'natural & pure'}'.\n"
+            if key_ingredient else ""
+        )
+        + f"\nReturn ONLY a JSON object matching this schema:\n{OUTPUT_SCHEMA}"
+    )
+
+
+def _call_llm(prompt: str) -> str:
+    """Call Gemini 2.5 Flash (primary) or Groq (fallback)."""
+    google_api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+
+    if google_api_key:
+        try:
+            from google import genai
+            from google.genai import types as gtypes
+            client = genai.Client(api_key=google_api_key)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=gtypes.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.7,
+                    max_output_tokens=3000,
+                    thinking_config=None,
+                ),
+            )
+            return response.text.strip()
+        except Exception as e:
+            logger.warning("Gemini failed (%s) — falling back to Groq.", e)
+
+    # Groq fallback
+    client = GroqKeyPool().client
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        max_tokens=3000,
+        temperature=0.7,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return response.choices[0].message.content.strip()
+
+
 def generate(
     product_name: str,
     key_benefit: str,
@@ -267,17 +375,23 @@ def generate(
     competitor_ad: dict | None = None,
     theme: dict | None = None,
     root: dict | None = None,
+    visual_root: dict | None = None,
     visual_analysis: dict | None = None,
     key_ingredient: str | None = None,
     ingredient_benefit: str | None = None,
 ) -> dict:
-    if not competitor_ad and not theme and not root:
-        raise ValueError("Provide competitor_ad, theme, or root as inspiration.")
+    if not competitor_ad and not theme and not root and not visual_root:
+        raise ValueError("Provide competitor_ad, theme, root, or visual_root as inspiration.")
 
     if competitor_ad:
         prompt = _build_prompt_from_ad(
             product_name, key_benefit, target_audience,
             competitor_ad, visual_analysis,
+            key_ingredient, ingredient_benefit,
+        )
+    elif visual_root:
+        prompt = _build_prompt_from_visual_root(
+            product_name, key_benefit, target_audience, visual_root,
             key_ingredient, ingredient_benefit,
         )
     elif root:
@@ -291,22 +405,18 @@ def generate(
             key_ingredient, ingredient_benefit,
         )
 
-    client = GroqKeyPool().client
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=1200,
-        temperature=0.7,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-    )
+    raw = _call_llm(prompt)
 
-    raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
         raw = raw.split("```", 2)[1]
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
+
+    # Extract outermost JSON object
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start != -1 and end > 0:
+        raw = raw[start:end]
 
     return json.loads(raw)
