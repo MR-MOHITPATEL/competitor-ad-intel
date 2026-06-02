@@ -77,18 +77,24 @@ def _extract_visual_signals(vision_ad: dict) -> dict:
     }
 
 
-def _get_primary_image_url(ad_id: str, scored_map: dict) -> str:
+def _get_primary_image_url(ad_id: str, scored_map: dict, vision_ad: dict | None = None) -> str:
     """Get the best available image URL for an ad — prefers Supabase URLs."""
-    ad = scored_map.get(ad_id, {}) or {}
-    urls = (
-        ad.get("ad_supabase_image_urls")
-        or ad.get("ad_remote_image_urls")
-        or ad.get("ad_image_urls")
-        or []
-    )
-    if urls:
-        return urls[0]
-    return ad.get("primary_image_url", "") or ""
+    # Check scored map first, then vision_ad itself
+    for source in [scored_map.get(ad_id, {}) or {}, vision_ad or {}]:
+        urls = (
+            source.get("ad_supabase_image_urls")
+            or source.get("ad_remote_image_urls")
+            or source.get("ad_image_urls")
+            or []
+        )
+        if urls:
+            first = urls[0]
+            if str(first).startswith("http"):
+                return first
+        primary = source.get("primary_image_url", "") or ""
+        if primary.startswith("http"):
+            return primary
+    return ""
 
 
 def _existing_visual_roots_hint(existing_roots: list[dict]) -> str:
@@ -124,7 +130,7 @@ def build_prompt(
     for i, ad in enumerate(sample):
         ad_id = ad.get("ad_id", "")
         signals = _extract_visual_signals(ad)
-        img_url = _get_primary_image_url(ad_id, scored_map)
+        img_url = _get_primary_image_url(ad_id, scored_map, ad)
         idx = i + 1
         slim_ads.append({"idx": idx, "id": ad_id, **signals})
         image_items.append({"idx": idx, "ad_id": ad_id, "url": img_url})
@@ -204,7 +210,7 @@ def _call_llm_with_images(
                     config=gtypes.GenerateContentConfig(
                         system_instruction=SYSTEM_PROMPT,
                         temperature=0.2,
-                        max_output_tokens=4000,
+                        max_output_tokens=8192,
                         thinking_config=None,
                     ),
                 )
