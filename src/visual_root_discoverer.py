@@ -30,7 +30,7 @@ from utils import GroqKeyPool, get_logger, load_json, save_json
 
 logger = get_logger("visual_root_discoverer")
 
-GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_MODEL = "gemini-3.5-flash"
 GROQ_FALLBACK_MODEL = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = (
@@ -145,7 +145,7 @@ def _call_llm(
                         system_instruction=SYSTEM_PROMPT,
                         temperature=0.2,
                         max_output_tokens=3000,
-                        thinking_config=gtypes.ThinkingConfig(thinking_budget=1024),
+                        thinking_config=None,
                     ),
                 )
                 return response.text.strip()
