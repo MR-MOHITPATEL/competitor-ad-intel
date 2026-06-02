@@ -130,25 +130,34 @@ def build_prompt(
 
     prompt = (
         f"You are looking at {len(slim_ads)} ad images (labeled [1] to [{len(slim_ads)}]).\n"
-        f"Cluster them into 5-7 LAYOUT ROOTS based ONLY on spatial structure.\n\n"
+        f"Cluster them into 5-7 LAYOUT ROOTS based ONLY on MACRO spatial structure.\n\n"
         + (hint if hint else "")
-        + "CLUSTERING RULES:\n"
-        "- Look ONLY at: number of zones, zone positions, zone proportions in the frame\n"
-        "- IGNORE: product name, message, content type, colors, audience targeted\n"
-        "- Two ads with completely different content but same zone layout = SAME root\n"
-        "- Minimum 3 ads per root — merge thin groups into closest structural match\n\n"
-        "KNOWN STRUCTURAL LAYOUTS IN ADVERTISING:\n"
-        "  1. Two-Column Equal Split — frame split 50/50 left-right, each half has one content block\n"
-        "  2. Two-Column Unequal Split — frame split ~40/60 or 35/65 left-right\n"
-        "  3. Centered Single Element — one dominant element centered, minimal surrounding content\n"
-        "  4. Full-Bleed Single Zone — one element fills the entire frame, text overlaid on top\n"
-        "  5. Top-Bottom Stack — frame split horizontally, top zone + bottom zone\n"
-        "  6. Product-Center with Surround Elements — central element with smaller elements around edges\n"
-        "  7. Three-Zone Vertical — three distinct horizontal bands (header/body/footer)\n"
-        "  8. Before-After Two-Panel — frame split into exactly two equal panels\n"
-        "  9. Grid Multi-Block — multiple equal-sized blocks in a grid pattern\n\n"
-        "INVALID groupings: by color, by content type, by brand, by message\n\n"
-        f"STRUCTURAL SIGNALS (for reference alongside the images):\n"
+        + "CLUSTERING RULES — READ CAREFULLY:\n"
+        "- Group by the OVERALL FRAME DIVISION only — how the canvas is split at a high level\n"
+        "- IGNORE ALL OF THESE: product, text content, colors, brand, audience, small badge positions\n"
+        "- If two ads have the same OVERALL frame structure they are the SAME root, even if:\n"
+        "  • One has a person, the other has a product bottle\n"
+        "  • One has a stat badge top-right, the other has text top-left\n"
+        "  • One has benefit icons at the bottom, the other has a discount bar\n"
+        "- Think of it like a WIREFRAME sketch — strip everything to rectangles. Same rectangle arrangement = same root\n"
+        "- Minimum 3 ads per root — merge thin groups into closest structural match\n"
+        "- When in doubt, MERGE into the closest existing root rather than creating a new one\n\n"
+        "THE 6 MACRO STRUCTURES TO USE (use ONLY these, merge everything into the closest one):\n"
+        "  A. FULL-BLEED — one element (person, scene, or product) fills the ENTIRE frame; text is overlaid\n"
+        "     → Includes: lifestyle person holding product, close-up body shot with text, food/scene fills frame\n"
+        "  B. TOP-BOTTOM STACK — canvas split horizontally; top zone has one content, bottom zone has another\n"
+        "     → Includes: text at top + product at bottom, headline top + benefits bottom, image top + CTA bottom\n"
+        "  C. LEFT-RIGHT SPLIT — canvas split vertically into two distinct zones side-by-side\n"
+        "     → Includes: product left + benefits right, stats left + product right, regardless of proportions\n"
+        "  D. CENTERED SINGLE — one dominant element centered in the frame, background fills the rest\n"
+        "     → Includes: single product on white background, single person centered, single headline centered\n"
+        "  E. THREE-ZONE STACK — three horizontal bands: header text / main visual / footer bar\n"
+        "     → Includes: headline top + hero image middle + CTA/icons bottom bar\n"
+        "  F. BEFORE-AFTER — frame split into exactly two equal panels showing contrast\n"
+        "     → Includes: two photos side by side, split screen, then/now\n\n"
+        "EXAMPLE: An ad with a person holding a product (full bleed scene) and an ad with a close-up body with a patch "
+        "— BOTH are FULL-BLEED even though content is completely different.\n\n"
+        f"STRUCTURAL SIGNALS (use alongside the images):\n"
         f"{json.dumps(slim_ads, separators=(',',':'), ensure_ascii=False)}\n\n"
         f"Return ONLY a JSON object matching this schema:\n{LAYOUT_SCHEMA}"
     )
@@ -195,8 +204,8 @@ def _call_gemini_with_images(
                 config=gtypes.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0.2,
-                    max_output_tokens=8192,
-                    thinking_config=None,
+                    max_output_tokens=16000,
+                    thinking_config=gtypes.ThinkingConfig(thinking_budget=0),
                 ),
             )
             return response.text.strip()
