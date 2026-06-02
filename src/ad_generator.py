@@ -436,8 +436,20 @@ def generate(
     if start != -1 and end > 0:
         raw = raw[start:end]
 
+    _MANDATORY_PREFIX = (
+        "Square 1:1 ratio image. "
+        "Use the exact product image provided by the user.\n\n"
+    )
+
+    def _inject_mandatory(result: dict) -> dict:
+        """Ensure mandatory lines are always at the start of image_prompt."""
+        ip = result.get("image_prompt", "")
+        if ip and not ip.startswith("Square 1:1"):
+            result["image_prompt"] = _MANDATORY_PREFIX + ip
+        return result
+
     try:
-        return json.loads(raw)
+        return _inject_mandatory(json.loads(raw))
     except json.JSONDecodeError:
         # Response was truncated — retry once with a simpler prompt asking for shorter output
         logger.warning("JSON truncated — retrying with shorter image prompt instruction.")
@@ -457,4 +469,4 @@ def generate(
         e2 = raw2.rfind("}") + 1
         if s2 != -1 and e2 > 0:
             raw2 = raw2[s2:e2]
-        return json.loads(raw2)
+        return _inject_mandatory(json.loads(raw2))
