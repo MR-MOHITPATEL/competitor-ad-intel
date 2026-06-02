@@ -240,8 +240,20 @@ def run(
     vision_ads = [a for a in vision_data if not a.get("error") and a.get("visual_format")]
 
     if not vision_ads:
-        logger.warning("No valid vision analyses found — cannot discover visual roots.")
-        save_json({"visual_roots": [], "summary": "No vision data available."}, output_path)
+        total = len(vision_data)
+        errors = sum(1 for a in vision_data if a.get("error"))
+        logger.warning(
+            "No valid vision analyses found (%d total, %d errors) — "
+            "run Step 4 (Analyze Images) first, or re-fetch ads if images are expired.",
+            total, errors,
+        )
+        save_json({
+            "visual_roots": [],
+            "summary": (
+                f"No valid image analyses found ({errors}/{total} failed). "
+                "Re-run Step 4 (Analyze Images) — images may have expired and need a fresh fetch."
+            ),
+        }, output_path)
         return output_path
 
     scored_data = load_json(scored_path) if scored_path.exists() else {}
