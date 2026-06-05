@@ -20,7 +20,7 @@ from utils import GroqKeyPool, get_logger
 logger = get_logger("ad_generator")
 
 GEMINI_MODEL         = "gemini-2.5-flash"
-GEMINI_FALLBACK_MODEL = "gemini-2.0-flash"
+GEMINI_FALLBACK_MODEL = "gemini-1.5-pro"
 GROQ_MODEL           = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = (
