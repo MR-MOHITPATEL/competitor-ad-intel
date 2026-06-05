@@ -213,8 +213,8 @@ def _call_llm_with_images(
                     config=gtypes.GenerateContentConfig(
                         system_instruction=SYSTEM_PROMPT,
                         temperature=0.2,
-                        max_output_tokens=8192,
-                        thinking_config=None,
+                        max_output_tokens=16000,
+                        thinking_config=gtypes.ThinkingConfig(thinking_budget=0),
                     ),
                 )
                 return response.text.strip()
