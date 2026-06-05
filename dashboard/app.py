@@ -1657,6 +1657,41 @@ if _has_analysis:
                                 except Exception:
                                     pass
 
+    # ── Person photo (if layout contains person) ────────────────────────────────
+    person_photo_path = None
+    _has_person = False
+
+    if selected_root_data:  # Layout root
+        root_name_lower = str(selected_root_data.get('layout_name', '') +
+                            selected_root_data.get('content_type', '')).lower()
+        _has_person = any(word in root_name_lower for word in ['person', 'doctor', 'lifestyle', 'authority', 'testimonial'])
+
+    if _has_person:
+        st.markdown("---")
+        st.markdown("**👤 Person in this layout**")
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            person_use = st.radio(
+                "Use uploaded photo or generated?",
+                ["Generate person", "Use my doctor/person photo"],
+                label_visibility="collapsed",
+                key="person_radio"
+            )
+        with pc2:
+            if person_use == "Use my doctor/person photo":
+                uploaded_person = st.file_uploader(
+                    "Upload doctor/person photo (JPG, PNG)",
+                    type=["jpg", "jpeg", "png"],
+                    key="person_photo_upload"
+                )
+                if uploaded_person:
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                        tmp.write(uploaded_person.read())
+                        person_photo_path = tmp.name
+                    st.caption(f"✅ Photo uploaded: {uploaded_person.name}")
+                    st.image(uploaded_person, width=150)
+
     # ── Generate button ────────────────────────────────────────────────────────
     can_generate = bool(my_product and my_benefit and my_audience
                         and (selected_ad_data or selected_theme_data or selected_root_data or selected_vroot_data))
@@ -1676,6 +1711,7 @@ if _has_analysis:
                     root=selected_root_data,
                     visual_root=selected_vroot_data,
                     visual_analysis=selected_visual_data,
+                    person_photo_path=person_photo_path,
                 )
                 st.session_state["last_generated_ad"] = result
             except Exception as e:

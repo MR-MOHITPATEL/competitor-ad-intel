@@ -336,8 +336,11 @@ def _build_prompt_from_visual_root(
     )
 
 
-def _call_llm(prompt: str) -> str:
-    """Call Gemini 2.5 Flash — required for high-quality ad generation."""
+def _call_llm(prompt: str, person_photo_path: str | Path | None = None) -> str:
+    """Call Gemini 2.5 Flash — required for high-quality ad generation.
+
+    If person_photo_path provided, sends the image to Gemini for visual matching.
+    """
     google_api_key = os.getenv("GOOGLE_API_KEY", "").strip()
 
     if not google_api_key:
@@ -353,9 +356,34 @@ def _call_llm(prompt: str) -> str:
     for model in [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]:
         for attempt in range(3):
             try:
+                # Build multimodal contents if person photo provided
+                contents = []
+                if person_photo_path:
+                    person_path = Path(person_photo_path)
+                    if person_path.exists():
+                        ext = person_path.suffix.lower()
+                        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                               "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+                        try:
+                            contents.append(
+                                gtypes.Part.from_bytes(
+                                    data=person_path.read_bytes(),
+                                    mime_type=mime
+                                )
+                            )
+                            contents.append(
+                                "USER-PROVIDED PERSON/DOCTOR PHOTO:\nUse this exact photo for the person "
+                                "element in the ad. Match the pose, lighting, background, and professional "
+                                "appearance to create a cohesive ad layout."
+                            )
+                        except Exception as e:
+                            logger.warning("Failed to load person photo (%s) — generating person instead.", e)
+
+                contents.append(prompt)
+
                 response = client.models.generate_content(
                     model=model,
-                    contents=prompt,
+                    contents=contents,
                     config=gtypes.GenerateContentConfig(
                         system_instruction=SYSTEM_PROMPT,
                         temperature=0.7,
@@ -392,6 +420,7 @@ def generate(
     visual_analysis: dict | None = None,
     key_ingredient: str | None = None,
     ingredient_benefit: str | None = None,
+    person_photo_path: str | Path | None = None,
 ) -> dict:
     if not competitor_ad and not theme and not root and not visual_root:
         raise ValueError("Provide competitor_ad, theme, root, or visual_root as inspiration.")
@@ -418,7 +447,7 @@ def generate(
             key_ingredient, ingredient_benefit,
         )
 
-    raw = _call_llm(prompt)
+    raw = _call_llm(prompt, person_photo_path)
 
     # Strip markdown fences
     if "```" in raw:
