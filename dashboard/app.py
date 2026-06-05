@@ -1448,6 +1448,35 @@ if _has_analysis:
     selected_visual_data  = None
     selected_vroot_data   = None
 
+    # ── Person photo upload (available for all inspiration sources) ────────────
+    st.markdown("---")
+    st.markdown("**👤 Add a person to this ad (optional)**")
+    st.caption("If your inspiration source uses a person/doctor/lifestyle element, upload your photo here.")
+    ppc1, ppc2 = st.columns(2)
+    with ppc1:
+        person_use = st.radio(
+            "Use uploaded photo or generated?",
+            ["Generate person", "Use my doctor/person photo"],
+            label_visibility="collapsed",
+            key="person_radio_main"
+        )
+    person_photo_path = None
+    with ppc2:
+        if person_use == "Use my doctor/person photo":
+            uploaded_person = st.file_uploader(
+                "Upload doctor/person photo (JPG, PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="person_photo_upload_main"
+            )
+            if uploaded_person:
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    tmp.write(uploaded_person.read())
+                    person_photo_path = tmp.name
+                st.caption(f"✅ Photo uploaded: {uploaded_person.name}")
+                st.image(uploaded_person, width=150)
+    st.markdown("---")
+
     _all_ads: list[dict] = list(merged) if merged else []
     if not _all_ads:
         _scored_files = sorted(DATA_SCORED.glob("*.json"),   key=lambda p: p.stat().st_mtime, reverse=True)
@@ -1657,37 +1686,21 @@ if _has_analysis:
                                 except Exception:
                                     pass
 
-    # ── Person photo (for Root/Layout selections) ────────────────────────────────
-    person_photo_path = None
-
-    if selected_root_data:  # Layout root selected
-        st.markdown("---")
-        st.markdown("**👤 Add a person to this ad (optional)**")
-        st.caption("If the layout uses a person/doctor/lifestyle element, upload your photo here.")
-        pc1, pc2 = st.columns(2)
-        with pc1:
-            person_use = st.radio(
-                "Use uploaded photo or generated?",
-                ["Generate person", "Use my doctor/person photo"],
-                label_visibility="collapsed",
-                key="person_radio"
-            )
-        with pc2:
-            if person_use == "Use my doctor/person photo":
-                uploaded_person = st.file_uploader(
-                    "Upload doctor/person photo (JPG, PNG)",
-                    type=["jpg", "jpeg", "png"],
-                    key="person_photo_upload"
-                )
-                if uploaded_person:
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                        tmp.write(uploaded_person.read())
-                        person_photo_path = tmp.name
-                    st.caption(f"✅ Photo uploaded: {uploaded_person.name}")
-                    st.image(uploaded_person, width=150)
-
     # ── Generate button ────────────────────────────────────────────────────────
+    # Check if selected source contains a person — only then use the uploaded photo
+    _selected_has_person = False
+    if selected_ad_data:
+        desc = str(selected_ad_data.get('description', '') + selected_ad_data.get('hook_type', '')).lower()
+        _selected_has_person = any(w in desc for w in ['person', 'doctor', 'lifestyle', 'authority', 'testimonial'])
+    elif selected_vroot_data:
+        desc = str(selected_vroot_data.get('description', '') + selected_vroot_data.get('content_type', '')).lower()
+        _selected_has_person = any(w in desc for w in ['person', 'doctor', 'lifestyle', 'authority', 'testimonial'])
+    elif selected_root_data:
+        desc = str(selected_root_data.get('layout_name', '') + selected_root_data.get('skeleton', '')).lower()
+        _selected_has_person = any(w in desc for w in ['person', 'doctor', 'lifestyle', 'authority', 'testimonial'])
+
+    # Only pass person_photo if the selected source actually has a person
+    final_person_photo = person_photo_path if _selected_has_person else None
     can_generate = bool(my_product and my_benefit and my_audience
                         and (selected_ad_data or selected_theme_data or selected_root_data or selected_vroot_data))
 
@@ -1706,7 +1719,7 @@ if _has_analysis:
                     root=selected_root_data,
                     visual_root=selected_vroot_data,
                     visual_analysis=selected_visual_data,
-                    person_photo_path=person_photo_path,
+                    person_photo_path=final_person_photo,
                 )
                 st.session_state["last_generated_ad"] = result
             except Exception as e:
