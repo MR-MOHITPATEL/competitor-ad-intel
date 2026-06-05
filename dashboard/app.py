@@ -1657,18 +1657,13 @@ if _has_analysis:
                                 except Exception:
                                     pass
 
-    # ── Person photo (if layout contains person) ────────────────────────────────
+    # ── Person photo (for Root/Layout selections) ────────────────────────────────
     person_photo_path = None
-    _has_person = False
 
-    if selected_root_data:  # Layout root
-        root_name_lower = str(selected_root_data.get('layout_name', '') +
-                            selected_root_data.get('content_type', '')).lower()
-        _has_person = any(word in root_name_lower for word in ['person', 'doctor', 'lifestyle', 'authority', 'testimonial'])
-
-    if _has_person:
+    if selected_root_data:  # Layout root selected
         st.markdown("---")
-        st.markdown("**👤 Person in this layout**")
+        st.markdown("**👤 Add a person to this ad (optional)**")
+        st.caption("If the layout uses a person/doctor/lifestyle element, upload your photo here.")
         pc1, pc2 = st.columns(2)
         with pc1:
             person_use = st.radio(
