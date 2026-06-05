@@ -1452,7 +1452,11 @@ if _has_analysis:
     st.markdown("---")
     st.markdown("**👤 Add a person to this ad (optional)**")
     st.caption("If your inspiration source uses a person/doctor/lifestyle element, upload your photo here.")
-    ppc1, ppc2 = st.columns(2)
+    ppc1, ppc2, ppc3 = st.columns(3)
+
+    person_photo_path = None
+    illustration_style = "realistic"
+
     with ppc1:
         person_use = st.radio(
             "Use uploaded photo or generated?",
@@ -1460,7 +1464,7 @@ if _has_analysis:
             label_visibility="collapsed",
             key="person_radio_main"
         )
-    person_photo_path = None
+
     with ppc2:
         if person_use == "Use my doctor/person photo":
             uploaded_person = st.file_uploader(
@@ -1475,6 +1479,18 @@ if _has_analysis:
                     person_photo_path = tmp.name
                 st.caption(f"✅ Photo uploaded: {uploaded_person.name}")
                 st.image(uploaded_person, width=150)
+
+    with ppc3:
+        if person_use == "Use my doctor/person photo" and person_photo_path:
+            st.markdown("**Photo Style:**")
+            illustration_style = st.radio(
+                "Style",
+                ["Realistic", "Illustrated"],
+                label_visibility="collapsed",
+                key="illustration_style_main",
+                horizontal=True
+            ).lower()
+
     st.markdown("---")
 
     _all_ads: list[dict] = list(merged) if merged else []
@@ -1720,6 +1736,7 @@ if _has_analysis:
                     visual_root=selected_vroot_data,
                     visual_analysis=selected_visual_data,
                     person_photo_path=final_person_photo,
+                    illustration_style=illustration_style,
                 )
                 st.session_state["last_generated_ad"] = result
             except Exception as e:

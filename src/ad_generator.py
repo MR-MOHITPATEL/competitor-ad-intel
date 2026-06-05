@@ -336,10 +336,11 @@ def _build_prompt_from_visual_root(
     )
 
 
-def _call_llm(prompt: str, person_photo_path: str | Path | None = None) -> str:
+def _call_llm(prompt: str, person_photo_path: str | Path | None = None, illustration_style: str = "realistic") -> str:
     """Call Gemini 2.5 Flash — required for high-quality ad generation.
 
     If person_photo_path provided, sends the image to Gemini for visual matching.
+    If illustration_style is "illustrated", instructs Gemini to create an illustrated version.
     """
     google_api_key = os.getenv("GOOGLE_API_KEY", "").strip()
 
@@ -371,11 +372,26 @@ def _call_llm(prompt: str, person_photo_path: str | Path | None = None) -> str:
                                     mime_type=mime
                                 )
                             )
-                            contents.append(
-                                "USER-PROVIDED PERSON/DOCTOR PHOTO:\nUse this exact photo for the person "
-                                "element in the ad. Match the pose, lighting, background, and professional "
-                                "appearance to create a cohesive ad layout."
-                            )
+
+                            # Instruction based on illustration style
+                            if illustration_style == "illustrated":
+                                instruction = (
+                                    "USER-PROVIDED PERSON/DOCTOR PHOTO:\n"
+                                    "Create a PROFESSIONAL DIGITAL ILLUSTRATION (cartoon/drawn style, "
+                                    "like Dr. Bimal's illustrated style - NOT photorealistic) of this person. "
+                                    "Match the pose, expression, clothing, and professional appearance. "
+                                    "Use clean lines, professional digital drawing style, similar to modern "
+                                    "illustrated character designs. This will be the person element in the ad."
+                                )
+                            else:
+                                instruction = (
+                                    "USER-PROVIDED PERSON/DOCTOR PHOTO:\n"
+                                    "Use this exact photo for the person element in the ad. "
+                                    "Match the pose, lighting, background, and professional appearance "
+                                    "to create a cohesive ad layout."
+                                )
+
+                            contents.append(instruction)
                         except Exception as e:
                             logger.warning("Failed to load person photo (%s) — generating person instead.", e)
 
@@ -421,6 +437,7 @@ def generate(
     key_ingredient: str | None = None,
     ingredient_benefit: str | None = None,
     person_photo_path: str | Path | None = None,
+    illustration_style: str = "realistic",
 ) -> dict:
     if not competitor_ad and not theme and not root and not visual_root:
         raise ValueError("Provide competitor_ad, theme, root, or visual_root as inspiration.")
@@ -447,7 +464,7 @@ def generate(
             key_ingredient, ingredient_benefit,
         )
 
-    raw = _call_llm(prompt, person_photo_path)
+    raw = _call_llm(prompt, person_photo_path, illustration_style)
 
     # Strip markdown fences
     if "```" in raw:
