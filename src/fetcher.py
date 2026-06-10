@@ -448,7 +448,7 @@ def scrape_ads(
         # Register response interceptor
         page.on("response", on_response)
 
-        page.goto(url, wait_until="networkidle", timeout=45_000)
+        page.goto(url, wait_until="domcontentloaded", timeout=45_000)
 
         # ── Consent dialogs ──
         for selector in [
@@ -489,8 +489,11 @@ def scrape_ads(
         # ── Scroll loop ──
         stale = 0
         last_count = len(collected)
+        scroll_count = 0
+        MAX_SCROLLS = max(30, max_ads // 2)  # hard cap: never scroll more than this
 
-        while len(collected) < max_ads:
+        while len(collected) < max_ads and scroll_count < MAX_SCROLLS:
+            scroll_count += 1
             # Slow human-like scroll
             page.evaluate("""
                 window.scrollBy({

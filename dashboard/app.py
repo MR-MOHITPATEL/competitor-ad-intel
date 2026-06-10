@@ -369,7 +369,16 @@ if fetch_new_clicked and page_name:
             if batch_label.strip():
                 cmd += ["--label", batch_label.strip()]
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-            result = subprocess.run(cmd, capture_output=True, cwd=str(ROOT), env=child_env)
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=360
+                )
+            except subprocess.TimeoutExpired as _te:
+                _te.kill()
+                raise RuntimeError(
+                    "Fetch timed out after 6 minutes. "
+                    "Try fewer ads or a different country."
+                )
             log_output = (
                 result.stdout.decode("utf-8", errors="replace")
                 + result.stderr.decode("utf-8", errors="replace")
@@ -683,7 +692,16 @@ if run_step[0]:
             if batch_label.strip():
                 cmd += ["--label", batch_label.strip()]
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-            result = subprocess.run(cmd, capture_output=True, cwd=str(ROOT), env=child_env)
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=360
+                )
+            except subprocess.TimeoutExpired as _te:
+                _te.kill()
+                raise RuntimeError(
+                    "Fetch timed out after 6 minutes. "
+                    "Try fewer ads (e.g. 50) or a different country."
+                )
             log_output = (
                 result.stdout.decode("utf-8", errors="replace")
                 + result.stderr.decode("utf-8", errors="replace")
