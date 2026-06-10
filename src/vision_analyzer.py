@@ -204,7 +204,8 @@ def analyze_with_gemini(ad: dict, google_api_key: str) -> dict:
 
     ad_id = ad.get("ad_id", "unknown")
     image_urls = (
-        ad.get("ad_image_urls")
+        ad.get("ad_supabase_image_urls")
+        or ad.get("ad_image_urls")
         or ad.get("ad_remote_image_urls")
         or ([ad["primary_image_url"]] if ad.get("primary_image_url") else [])
     )
@@ -275,7 +276,8 @@ def analyze_with_groq(pool: GroqKeyPool, ad: dict) -> dict:
     """Analyze a single ad image using Groq Vision (fallback)."""
     ad_id = ad.get("ad_id", "unknown")
     image_urls = (
-        ad.get("ad_image_urls")
+        ad.get("ad_supabase_image_urls")
+        or ad.get("ad_image_urls")
         or ad.get("ad_remote_image_urls")
         or ([ad["primary_image_url"]] if ad.get("primary_image_url") else [])
     )
@@ -349,7 +351,12 @@ def run(scored_path: str | Path, output_dir: str = "data/analyzed", force: bool 
 
     data = load_json(scored_path)
     ads = data.get("scored_ads", data) if isinstance(data, dict) else data
-    image_ads = [a for a in ads if a.get("ad_image_urls") or a.get("primary_image_url")]
+    image_ads = [a for a in ads if (
+        a.get("ad_supabase_image_urls")
+        or a.get("ad_image_urls")
+        or a.get("ad_remote_image_urls")
+        or a.get("primary_image_url")
+    )]
 
     # Load existing results and skip already-analyzed ad_ids (incremental)
     existing_results: list[dict] = []

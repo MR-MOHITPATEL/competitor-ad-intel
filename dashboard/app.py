@@ -837,7 +837,12 @@ if run_step[3]:
         try:
             scored_data = load_json(scored_path)
             ads = scored_data.get("scored_ads", [])
-            image_ads = [a for a in ads if a.get("ad_image_urls") or a.get("primary_image_url")]
+            image_ads = [a for a in ads if (
+                a.get("ad_supabase_image_urls")
+                or a.get("ad_image_urls")
+                or a.get("ad_remote_image_urls")
+                or a.get("primary_image_url")
+            )]
             st.write(f"**{len(image_ads)} images** to analyze — AI reads layout, colors, visual structure…")
             st.write("_(~4 seconds per image via Gemini Vision AI)_")
             cmd = [
