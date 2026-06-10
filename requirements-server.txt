@@ -1,4 +1,3 @@
-# Server dependencies — Playwright excluded (fetch runs locally)
 anthropic>=0.40.0
 groq>=0.9.0
 google-genai>=1.0.0
@@ -7,6 +6,7 @@ python-dotenv>=1.0.0
 streamlit>=1.35.0
 pandas>=2.0.0
 supabase>=2.0.0
+playwright>=1.44.0
 openpyxl>=3.0.0
 python-dateutil>=2.8.0
 pytz>=2023.3
