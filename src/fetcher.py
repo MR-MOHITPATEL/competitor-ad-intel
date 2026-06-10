@@ -719,6 +719,15 @@ def run(
     _save_master(master_path, merged, page_query, country, page_label)
     logger.info("Master updated: %d total ads → %s", len(merged), master_path)
 
+    # Auto-upload images to Supabase (new feature for Railway)
+    try:
+        logger.info("Auto-uploading images to Supabase…")
+        from image_uploader import run as upload_run
+        upload_run(str(master_path))
+        logger.info("✓ Images auto-uploaded and master JSON updated with Supabase URLs")
+    except Exception as e:
+        logger.warning("Image auto-upload failed (non-blocking): %s", e)
+
     return output_path
 
 
@@ -811,6 +820,15 @@ def run_incremental(
     merged_ads = existing_ads + new_ads
     _save_master(master_file, merged_ads, page_query, country, page_label)
     logger.info("Master updated (%d total ads) → %s", len(merged_ads), master_file)
+
+    # Auto-upload images to Supabase (new feature for Railway)
+    try:
+        logger.info("Auto-uploading images to Supabase…")
+        from image_uploader import run as upload_run
+        upload_run(str(master_file))
+        logger.info("✓ Images auto-uploaded and master JSON updated with Supabase URLs")
+    except Exception as e:
+        logger.warning("Image auto-upload failed (non-blocking): %s", e)
 
     return daily_path, master_file
 

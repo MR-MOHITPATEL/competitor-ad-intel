@@ -635,6 +635,36 @@ if st.session_state.step_done.get(1):
                         _dl_status.update(label=f"❌ Download failed: {_e}", state="error")
 
 
+# ── Upload images to Supabase ──────────────────────────────────────────────────
+if st.session_state.step_done.get(1):
+    _raw_for_ul = st.session_state.get("raw_path")
+    if _raw_for_ul is None:
+        _rf = sorted(DATA_RAW.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        _raw_for_ul = _rf[0] if _rf else None
+    if _raw_for_ul:
+        _raw_for_ul = Path(_raw_for_ul)
+        _ul_stem = _raw_for_ul.stem.split("_20")[0]
+        _img_folder_ul = DATA_RAW / "images" / _ul_stem
+        _img_count_ul = sum(1 for _ in _img_folder_ul.glob("*.*")) if _img_folder_ul.exists() else 0
+        _ui1, _ui2 = st.columns([4, 1])
+        with _ui1:
+            if _img_count_ul > 0:
+                st.info(f"📤 Ready to upload **{_img_count_ul} images** for `{_ul_stem}` to database.")
+        with _ui2:
+            if st.button("📤 Upload Images to Database", key="ul_images"):
+                with st.status("Uploading images to Supabase…", expanded=True) as _ul_status:
+                    try:
+                        from image_uploader import run as ul_run
+                        ul_run(str(_raw_for_ul))
+                        st.write(f"✅ Images uploaded and master JSON updated with Supabase URLs")
+                        _ul_status.update(label=f"✅ Images uploaded to Supabase database", state="complete")
+                        st.success(f"✅ All images for `{_ul_stem}` are now in the cloud database!")
+                        st.rerun()
+                    except Exception as _e:
+                        _ul_status.update(label=f"❌ Upload failed: {_e}", state="error")
+                        st.error(f"Upload error: {_e}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP EXECUTION BLOCKS
 # ─────────────────────────────────────────────────────────────────────────────
