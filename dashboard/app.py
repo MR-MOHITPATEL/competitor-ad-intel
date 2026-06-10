@@ -37,16 +37,15 @@ for _d in [DATA_RAW, DATA_SCORED, DATA_ANALYZED, DATA_MASTER]:
     _d.mkdir(parents=True, exist_ok=True)
 
 # ── Supabase sync (once per session on hosted server) ─────────────────────────
-# TEMPORARILY DISABLED FOR DEBUGGING
-# if "supabase_synced" not in st.session_state:
-#     try:
-#         from utils import sync_from_supabase
-#         _synced = sync_from_supabase(ROOT)
-#         if _synced:
-#             st.toast(f"☁️ Synced {_synced} file(s) from cloud storage", icon="✅")
-#     except Exception:
-#         pass
-#     st.session_state["supabase_synced"] = True
+if "supabase_synced" not in st.session_state:
+    try:
+        from utils import sync_from_supabase
+        _synced = sync_from_supabase(ROOT)
+        if _synced:
+            st.toast(f"☁️ Synced {_synced} file(s) from cloud storage", icon="✅")
+    except Exception:
+        pass
+    st.session_state["supabase_synced"] = True
 st.session_state["supabase_synced"] = True
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
