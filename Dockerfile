@@ -2,29 +2,34 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# curl is needed for the healthcheck; the rest are installed by playwright --with-deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (server version — no Playwright)
+# Python dependencies
 COPY requirements-server.txt .
 RUN pip install --no-cache-dir -r requirements-server.txt
+
+# Install Chromium browser + all its Linux system dependencies in one step
+RUN playwright install --with-deps chromium
 
 # Copy app source
 COPY . .
 
-# Create data directories (will be overridden by persistent disk mount on Render)
+# Create data directories (ephemeral on Railway — Supabase is the real store)
 RUN mkdir -p data/raw/master data/raw/images data/scored data/analyzed
 
-# Streamlit config
 ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8501
 
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+# Use ${PORT:-8501}: Railway injects $PORT; fallback to 8501 for local docker run
+HEALTHCHECK CMD curl --fail http://localhost:${PORT:-8501}/_stcore/health || exit 1
 
-CMD ["streamlit", "run", "dashboard/app.py", \
-     "--server.port=8501", \
-     "--server.address=0.0.0.0", \
-     "--server.headless=true", \
-     "--browser.gatherUsageStats=false"]
+# Shell form (not exec/JSON form) so ${PORT:-8501} is expanded at container start
+CMD streamlit run dashboard/app.py \
+    --server.port=${PORT:-8501} \
+    --server.address=0.0.0.0 \
+    --server.headless=true \
+    --browser.gatherUsageStats=false
