@@ -43,10 +43,9 @@ if "supabase_synced" not in st.session_state:
         _synced = sync_from_supabase(ROOT)
         if _synced:
             st.toast(f"☁️ Synced {_synced} file(s) from cloud storage", icon="✅")
-    except Exception:
-        pass
+    except Exception as e:
+        st.warning(f"⚠️ Sync error: {str(e)[:100]}")
     st.session_state["supabase_synced"] = True
-st.session_state["supabase_synced"] = True
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
