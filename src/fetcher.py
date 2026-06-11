@@ -363,7 +363,7 @@ def build_url(query: str, country: str = "ALL") -> str:
         "ad_type": "all",
         "country": country,
         "q": query,
-        "search_type": "page",
+        "search_type": "keyword_unordered",
         "media_type": "image_and_meme",  # only fetch image/meme ads — no videos
     }
     return f"{ADS_LIBRARY_URL}?{urlencode(params)}"
