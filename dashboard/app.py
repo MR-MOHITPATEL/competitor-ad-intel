@@ -185,6 +185,7 @@ defaults = {
     "run_all_step": 1,
     "last_generated_ad": None,
     "step_running": None,   # which step (1-7) is currently executing
+    "step_last_error": None,  # last error message — shown as banner on next render
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -382,8 +383,7 @@ if fetch_new_clicked and page_name:
                 result = subprocess.run(
                     cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=360
                 )
-            except subprocess.TimeoutExpired as _te:
-                _te.kill()
+            except subprocess.TimeoutExpired:
                 raise RuntimeError(
                     "Fetch timed out after 6 minutes. "
                     "Try fewer ads or a different country."
@@ -697,12 +697,21 @@ if st.session_state.step_done.get(1):
 # STEP EXECUTION BLOCKS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Show persistent error banner from previous step failure
+if st.session_state.get("step_last_error"):
+    st.error(f"❌ Last step failed — see details below:\n\n{st.session_state.step_last_error}")
+    if st.button("✖ Dismiss error", key="dismiss_err"):
+        st.session_state.step_last_error = None
+        st.rerun()
+
 # ── Step 1: Fetch ──────────────────────────────────────────────────────────────
 if st.session_state.step_running == 1:
+    _ok = False
+    log_output = ""
     with st.status("🌐 Fetching ads from Meta Ads Library…", expanded=True) as status:
         try:
             st.write(f"Searching for **{page_name}** · country: **{country}** · up to **{max_ads} ads**")
-            st.write("_(Browser is running in the background — takes 30–60 seconds)_")
+            st.write("_(Browser is running in the background — takes 1–3 minutes)_")
             cmd = [
                 sys.executable, "-u", str(SRC / "fetcher.py"),
                 "--page", page_name, "--country", country,
@@ -715,8 +724,7 @@ if st.session_state.step_running == 1:
                 result = subprocess.run(
                     cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=360
                 )
-            except subprocess.TimeoutExpired as _te:
-                _te.kill()
+            except subprocess.TimeoutExpired:
                 raise RuntimeError(
                     "Fetch timed out after 6 minutes. "
                     "Try fewer ads (e.g. 50) or a different country."
@@ -725,14 +733,15 @@ if st.session_state.step_running == 1:
                 result.stdout.decode("utf-8", errors="replace")
                 + result.stderr.decode("utf-8", errors="replace")
             )
-            if log_output.strip():
-                with st.expander("📋 Log", expanded=False):
-                    st.code(log_output[-3000:], language=None)
+            # Always show log — critical for debugging failures
+            with st.expander("📋 Fetch Log", expanded=False):
+                st.code(log_output[-4000:] if log_output.strip() else "(no output)", language=None)
 
             raw_path = find_latest(DATA_RAW, "*.json")
             if raw_path is None:
                 raise RuntimeError(
-                    f"No output file saved (exit code {result.returncode}).\nLog:\n{log_output[-800:]}"
+                    f"Fetcher exited with code {result.returncode} and saved no file. "
+                    f"Check the Fetch Log above for the error."
                 )
             if result.returncode != 0:
                 st.warning("⚠️ Fetcher exited with a warning but data was saved.")
@@ -743,12 +752,15 @@ if st.session_state.step_running == 1:
             st.session_state.raw_path = raw_path
             mark_done(1, f"{len(ads)} ads")
             status.update(label=f"✅ Fetched {len(ads)} ads", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
-            status.update(label=f"❌ Fetch failed", state="error")
+            st.session_state.step_last_error = str(e)
+            status.update(label="❌ Fetch failed — see log above", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ── Step 2: Score ──────────────────────────────────────────────────────────────
@@ -759,6 +771,7 @@ if st.session_state.step_running == 2:
                        for c in page_name.replace(" ", "_").lower())
         raw_path = find_latest(DATA_RAW, f"{safe}_*.json") or find_latest(DATA_RAW, "*.json")
 
+    _ok = False
     with st.status("📊 Ranking ads by performance…", expanded=True) as status:
         try:
             from scorer import run as score_run
@@ -774,12 +787,15 @@ if st.session_state.step_running == 2:
             st.session_state.page_label = scored_path.stem.replace("_scored", "")
             mark_done(2, f"{winners} winners")
             status.update(label=f"✅ {winners} winner ads found", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
+            st.session_state.step_last_error = str(e)
             status.update(label=f"❌ Scoring failed: {e}", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ── Step 3: Text Analysis ──────────────────────────────────────────────────────
@@ -792,6 +808,7 @@ if st.session_state.step_running == 3:
         if not scored_path.exists():
             scored_path = find_latest(DATA_SCORED, "*.json")
 
+    _ok = False
     with st.status("📝 Reading ad copy…", expanded=True) as status:
         try:
             scored_data = load_json(scored_path)
@@ -802,37 +819,39 @@ if st.session_state.step_running == 3:
                 "--scored-file", str(scored_path), "--output-dir", str(DATA_ANALYZED),
             ] + (["--force"] if force else [])
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-            st.info("⚠️ Do not switch tabs while this step is running.")
-            with st.spinner("Reading ad copy — do not navigate away…"):
+            with st.spinner("Reading ad copy…"):
                 result = subprocess.run(
                     cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=600
                 )
             log_output = (result.stdout.decode("utf-8", errors="replace")
                           + result.stderr.decode("utf-8", errors="replace"))
-            if log_output.strip():
-                with st.expander("📋 Log", expanded=False):
-                    st.code(log_output[-3000:], language=None)
+            with st.expander("📋 Log", expanded=False):
+                st.code(log_output[-3000:] if log_output.strip() else "(no output)", language=None)
 
             page_label = scored_path.stem.replace("_scored", "")
             out_path = DATA_ANALYZED / f"{page_label}_text_analysis.json"
             if not out_path.exists():
-                raise RuntimeError(f"Output not found: {out_path}")
+                raise RuntimeError(f"Output not found: {out_path}. Check log above.")
             results = load_json(out_path)
             analyzed = [r for r in results if not r.get("error")]
             st.write(f"✅ **{len(analyzed)} ads** analyzed")
             st.session_state.page_label = page_label
             mark_done(3, f"{len(analyzed)} analyzed")
             status.update(label=f"✅ Ad copy analyzed — {len(analyzed)} ads", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
+            st.session_state.step_last_error = str(e)
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ── Step 4: Vision Analysis ────────────────────────────────────────────────────
 if st.session_state.step_running == 4:
+    _ok = False
     scored_path = st.session_state.scored_path
     if scored_path is None:
         safe = "".join(c if c.isalnum() or c == "_" else "_"
@@ -904,12 +923,15 @@ if st.session_state.step_running == 4:
             st.session_state.page_label = page_label
             mark_done(4, f"{len(analyzed)} images")
             status.update(label=f"✅ Images analyzed — {len(analyzed)} ads", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
+            st.session_state.step_last_error = str(e)
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ── Step 5: Aggregate Themes ───────────────────────────────────────────────────
@@ -919,6 +941,7 @@ if st.session_state.step_running == 5:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
                              for c in page_name.replace(" ", "_").lower())
 
+    _ok = False
     with st.status("🎯 Finding strategic patterns…", expanded=True) as status:
         try:
             from aggregator import run as agg_run
@@ -934,12 +957,15 @@ if st.session_state.step_running == 5:
             st.write(f"✅ **{n_themes} themes** discovered")
             mark_done(5, f"{n_themes} themes")
             status.update(label=f"✅ {n_themes} strategic themes found", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
+            st.session_state.step_last_error = str(e)
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ── Step 6: Visual Format Roots ────────────────────────────────────────────────
@@ -949,6 +975,7 @@ if st.session_state.step_running == 6:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
                              for c in page_name.replace(" ", "_").lower())
 
+    _ok = False
     with st.status("🖼️ Grouping ads by visual format…", expanded=True) as status:
         try:
             vision_path = DATA_ANALYZED / f"{page_label}_vision_analysis.json"
@@ -972,18 +999,21 @@ if st.session_state.step_running == 6:
                     st.code(log_output[-3000:], language=None)
             out_path = DATA_ANALYZED / f"{page_label}_visual_roots.json"
             if not out_path.exists():
-                raise RuntimeError(f"Output not found: {out_path}")
+                raise RuntimeError(f"Output not found: {out_path}\n\nLog:\n{log_output[-2000:]}")
             vroots_data = load_json(out_path)
             n_vroots = len(vroots_data.get("visual_roots", []))
             st.write(f"✅ **{n_vroots} visual format types** discovered")
             mark_done(6, f"{n_vroots} visual types")
             status.update(label=f"✅ {n_vroots} visual format types found", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
+            st.session_state.step_last_error = str(e)
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ── Step 7: Layout Structure Roots ────────────────────────────────────────────
@@ -993,6 +1023,7 @@ if st.session_state.step_running == 7:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
                              for c in page_name.replace(" ", "_").lower())
 
+    _ok = False
     with st.status("📐 Finding layout structure roots…", expanded=True) as status:
         try:
             vision_path = DATA_ANALYZED / f"{page_label}_vision_analysis.json"
@@ -1016,19 +1047,22 @@ if st.session_state.step_running == 7:
                     st.code(log_output[-3000:], language=None)
             out_path = DATA_ANALYZED / f"{page_label}_layout_roots.json"
             if not out_path.exists():
-                raise RuntimeError(f"Output not found: {out_path}")
+                raise RuntimeError(f"Output not found: {out_path}\n\nLog:\n{log_output[-2000:]}")
             layout_data = load_json(out_path)
             n_layouts = len(layout_data.get("layout_roots", []))
             st.write(f"✅ **{n_layouts} layout structures** discovered")
             st.session_state.run_all = False
             mark_done(7, f"{n_layouts} layouts")
             status.update(label=f"✅ {n_layouts} layout structure roots found", state="complete")
+            _ok = True
         except Exception as e:
             st.session_state.run_all = False
+            st.session_state.step_last_error = str(e)
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
     st.session_state.step_running = None
-    st.rerun()
+    if _ok:
+        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
