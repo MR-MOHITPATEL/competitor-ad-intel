@@ -15,6 +15,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import sys
 import time
@@ -357,6 +358,40 @@ def _extract_from_dom(page: Page) -> list[dict]:
 
 # ── Main scraper ──────────────────────────────────────────────────────────────
 
+def _facebook_login(page, email: str, password: str) -> bool:
+    """Log into Facebook. Returns True on success."""
+    try:
+        logger.info("Logging into Facebook as %s…", email)
+        page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=30_000)
+        time.sleep(2)
+        # Dismiss any cookie/consent dialog first
+        for selector in [
+            'button:has-text("Allow all cookies")',
+            'button:has-text("Accept all")',
+            'button:has-text("Only allow essential cookies")',
+            '[data-testid="cookie-policy-manage-dialog-accept-button"]',
+        ]:
+            try:
+                page.click(selector, timeout=2_000)
+                time.sleep(1)
+                break
+            except PWTimeout:
+                continue
+        page.fill('#email', email, timeout=10_000)
+        page.fill('#pass', password, timeout=10_000)
+        page.click('[name="login"]', timeout=10_000)
+        time.sleep(5)
+        # Check we're no longer on the login page
+        if "login" in page.url or "checkpoint" in page.url:
+            logger.warning("Facebook login may have failed — still on: %s", page.url)
+            return False
+        logger.info("Facebook login successful.")
+        return True
+    except Exception as e:
+        logger.warning("Facebook login error: %s", e)
+        return False
+
+
 def build_url(query: str, country: str = "ALL") -> str:
     params = {
         "active_status": "active",
@@ -447,6 +482,14 @@ def scrape_ads(
 
         # Register response interceptor
         page.on("response", on_response)
+
+        # Log into Facebook if credentials are available — required on server IPs
+        fb_email = os.environ.get("FACEBOOK_EMAIL", "")
+        fb_pass  = os.environ.get("FACEBOOK_PASSWORD", "")
+        if fb_email and fb_pass:
+            _facebook_login(page, fb_email, fb_pass)
+        else:
+            logger.warning("FACEBOOK_EMAIL/PASSWORD not set — fetching as anonymous (may return 0 ads on server)")
 
         page.goto(url, wait_until="domcontentloaded", timeout=45_000)
 
