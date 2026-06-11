@@ -47,6 +47,14 @@ if "supabase_synced" not in st.session_state:
         st.warning(f"⚠️ Sync error: {str(e)[:100]}")
     st.session_state["supabase_synced"] = True
 
+# ── Supabase connectivity warning ─────────────────────────────────────────────
+if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_KEY"):
+    st.error(
+        "⚠️ **SUPABASE_URL or SUPABASE_KEY not set.** "
+        "All analysis results are saved to local disk only and **will be permanently lost on redeploy**. "
+        "Go to Railway → Variables and add both keys."
+    )
+
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -176,6 +184,7 @@ defaults = {
     "run_all": False,
     "run_all_step": 1,
     "last_generated_ad": None,
+    "step_running": None,   # which step (1-7) is currently executing
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -452,18 +461,20 @@ with left_col:
             label_md += f"  `{count}`"
         caption_color = "#6b7280" if state == "locked" else "#374151"
 
+        _is_this_running = st.session_state.step_running == n
+        _any_running = st.session_state.step_running is not None
         scol1, scol2 = st.columns([6, 1])
         with scol1:
             st.markdown(label_md)
             st.caption(desc)
         with scol2:
             run_step[i] = st.button(
-                "Run" if not done else "↺",
+                "⏳" if _is_this_running else ("Run" if not done else "↺"),
                 key=f"step_btn_{n}",
-                disabled=not enabled,
+                disabled=not enabled or _any_running,
                 use_container_width=True,
-                type="primary" if (enabled and not done) else "secondary",
-                help=f"Run: {label}",
+                type="primary" if (enabled and not done and not _any_running) else "secondary",
+                help="Running…" if _is_this_running else f"Run: {label}",
             )
         st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
 
@@ -473,6 +484,14 @@ with left_col:
 
     if not page_name:
         st.info("👆 Enter a competitor page name above to get started.")
+
+    # Phase 1: button clicked (or run_all triggered) → lock the step → rerun so
+    # button renders as "⏳ Running…" before the heavyweight subprocess starts.
+    if st.session_state.step_running is None:
+        for _i, _triggered in enumerate(run_step):
+            if _triggered:
+                st.session_state.step_running = _i + 1
+                st.rerun()
 
 with right_col:
     # ── Upload master JSON (for hosted server — fetch runs locally) ────────────
@@ -679,7 +698,7 @@ if st.session_state.step_done.get(1):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Step 1: Fetch ──────────────────────────────────────────────────────────────
-if run_step[0]:
+if st.session_state.step_running == 1:
     with st.status("🌐 Fetching ads from Meta Ads Library…", expanded=True) as status:
         try:
             st.write(f"Searching for **{page_name}** · country: **{country}** · up to **{max_ads} ads**")
@@ -728,11 +747,12 @@ if run_step[0]:
             st.session_state.run_all = False
             status.update(label=f"❌ Fetch failed", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
 # ── Step 2: Score ──────────────────────────────────────────────────────────────
-if run_step[1]:
+if st.session_state.step_running == 2:
     raw_path = st.session_state.raw_path
     if raw_path is None:
         safe = "".join(c if c.isalnum() or c == "_" else "_"
@@ -758,11 +778,12 @@ if run_step[1]:
             st.session_state.run_all = False
             status.update(label=f"❌ Scoring failed: {e}", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
 # ── Step 3: Text Analysis ──────────────────────────────────────────────────────
-if run_step[2]:
+if st.session_state.step_running == 3:
     scored_path = st.session_state.scored_path
     if scored_path is None:
         safe = "".join(c if c.isalnum() or c == "_" else "_"
@@ -781,29 +802,16 @@ if run_step[2]:
                 "--scored-file", str(scored_path), "--output-dir", str(DATA_ANALYZED),
             ] + (["--force"] if force else [])
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-
-            progress_bar = st.progress(0.0)
-            status_text = st.empty()
-            log_lines: list[str] = []
-
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=str(ROOT), env=child_env, text=True, encoding="utf-8", errors="replace",
-            )
-            for line in proc.stdout:
-                line = line.rstrip()
-                log_lines.append(line)
-                m = re.search(r'Text batch (\d+) / (\d+)', line)
-                if m:
-                    cur, tot = int(m.group(1)), int(m.group(2))
-                    progress_bar.progress(cur / tot)
-                    status_text.text(f"Reading batch {cur} of {tot}…")
-            proc.wait()
-            progress_bar.progress(1.0)
-
-            if log_lines:
+            st.info("⚠️ Do not switch tabs while this step is running.")
+            with st.spinner("Reading ad copy — do not navigate away…"):
+                result = subprocess.run(
+                    cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=600
+                )
+            log_output = (result.stdout.decode("utf-8", errors="replace")
+                          + result.stderr.decode("utf-8", errors="replace"))
+            if log_output.strip():
                 with st.expander("📋 Log", expanded=False):
-                    st.code("\n".join(log_lines[-60:]), language=None)
+                    st.code(log_output[-3000:], language=None)
 
             page_label = scored_path.stem.replace("_scored", "")
             out_path = DATA_ANALYZED / f"{page_label}_text_analysis.json"
@@ -811,7 +819,6 @@ if run_step[2]:
                 raise RuntimeError(f"Output not found: {out_path}")
             results = load_json(out_path)
             analyzed = [r for r in results if not r.get("error")]
-            status_text.empty()
             st.write(f"✅ **{len(analyzed)} ads** analyzed")
             st.session_state.page_label = page_label
             mark_done(3, f"{len(analyzed)} analyzed")
@@ -820,11 +827,12 @@ if run_step[2]:
             st.session_state.run_all = False
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
 # ── Step 4: Vision Analysis ────────────────────────────────────────────────────
-if run_step[3]:
+if st.session_state.step_running == 4:
     scored_path = st.session_state.scored_path
     if scored_path is None:
         safe = "".join(c if c.isalnum() or c == "_" else "_"
@@ -856,20 +864,29 @@ if run_step[3]:
             log_lines: list[str] = []
             total_images = max(1, len(image_ads))
 
+            st.info("⚠️ Do not switch tabs while images are being analyzed.")
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=str(ROOT), env=child_env, text=True, encoding="utf-8", errors="replace",
             )
-            for line in proc.stdout:
-                line = line.rstrip()
-                log_lines.append(line)
-                m = re.search(r'Vision (\d+) / (\d+)', line)
-                if m:
-                    cur, tot = int(m.group(1)), int(m.group(2))
-                    total_images = tot
-                    progress_bar.progress(cur / tot)
-                    status_text.text(f"Analyzing image {cur} of {tot}…")
-            proc.wait()
+            try:
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    log_lines.append(line)
+                    m = re.search(r'Vision (\d+) / (\d+)', line)
+                    if m:
+                        cur, tot = int(m.group(1)), int(m.group(2))
+                        total_images = tot
+                        progress_bar.progress(cur / tot)
+                        status_text.text(f"Analyzing image {cur} of {tot}…")
+            finally:
+                # Always drain stdout and wait — prevents pipe-buffer deadlock
+                # when Streamlit raises StopException on tab interaction.
+                try:
+                    proc.stdout.read()
+                except Exception:
+                    pass
+                proc.wait()
             progress_bar.progress(1.0)
 
             if log_lines:
@@ -891,11 +908,12 @@ if run_step[3]:
             st.session_state.run_all = False
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
 # ── Step 5: Aggregate Themes ───────────────────────────────────────────────────
-if run_step[4]:
+if st.session_state.step_running == 5:
     page_label = st.session_state.page_label
     if not page_label:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
@@ -920,11 +938,12 @@ if run_step[4]:
             st.session_state.run_all = False
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
 # ── Step 6: Visual Format Roots ────────────────────────────────────────────────
-if run_step[5]:
+if st.session_state.step_running == 6:
     page_label = st.session_state.page_label
     if not page_label:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
@@ -942,20 +961,15 @@ if run_step[5]:
                 "--analyzed-dir", str(DATA_ANALYZED), "--scored-dir", str(DATA_SCORED),
             ] + (["--force"] if force else [])
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-            spinner_text = st.empty()
-            spinner_text.text("⏳ AI is grouping ads by visual format…")
-            log_lines: list[str] = []
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=str(ROOT), env=child_env, text=True, encoding="utf-8", errors="replace",
-            )
-            for line in proc.stdout:
-                log_lines.append(line.rstrip())
-            proc.wait()
-            spinner_text.empty()
-            if log_lines:
+            with st.spinner("⏳ AI is grouping ads by visual format — do not switch tabs…"):
+                result = subprocess.run(
+                    cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=600
+                )
+            log_output = (result.stdout.decode("utf-8", errors="replace")
+                          + result.stderr.decode("utf-8", errors="replace"))
+            if log_output.strip():
                 with st.expander("📋 Log", expanded=False):
-                    st.code("\n".join(log_lines[-40:]), language=None)
+                    st.code(log_output[-3000:], language=None)
             out_path = DATA_ANALYZED / f"{page_label}_visual_roots.json"
             if not out_path.exists():
                 raise RuntimeError(f"Output not found: {out_path}")
@@ -968,11 +982,12 @@ if run_step[5]:
             st.session_state.run_all = False
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
 # ── Step 7: Layout Structure Roots ────────────────────────────────────────────
-if run_step[6]:
+if st.session_state.step_running == 7:
     page_label = st.session_state.page_label
     if not page_label:
         page_label = "".join(c if c.isalnum() or c == "_" else "_"
@@ -990,20 +1005,15 @@ if run_step[6]:
                 "--analyzed-dir", str(DATA_ANALYZED), "--scored-dir", str(DATA_SCORED),
             ] + (["--force"] if force else [])
             child_env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-            spinner_text = st.empty()
-            spinner_text.text("⏳ AI is finding layout structure blueprints…")
-            log_lines: list[str] = []
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=str(ROOT), env=child_env, text=True, encoding="utf-8", errors="replace",
-            )
-            for line in proc.stdout:
-                log_lines.append(line.rstrip())
-            proc.wait()
-            spinner_text.empty()
-            if log_lines:
+            with st.spinner("⏳ AI is finding layout structure blueprints — do not switch tabs…"):
+                result = subprocess.run(
+                    cmd, capture_output=True, cwd=str(ROOT), env=child_env, timeout=600
+                )
+            log_output = (result.stdout.decode("utf-8", errors="replace")
+                          + result.stderr.decode("utf-8", errors="replace"))
+            if log_output.strip():
                 with st.expander("📋 Log", expanded=False):
-                    st.code("\n".join(log_lines[-40:]), language=None)
+                    st.code(log_output[-3000:], language=None)
             out_path = DATA_ANALYZED / f"{page_label}_layout_roots.json"
             if not out_path.exists():
                 raise RuntimeError(f"Output not found: {out_path}")
@@ -1017,6 +1027,7 @@ if run_step[6]:
             st.session_state.run_all = False
             status.update(label=f"❌ Failed: {e}", state="error")
             st.error(str(e))
+    st.session_state.step_running = None
     st.rerun()
 
 
