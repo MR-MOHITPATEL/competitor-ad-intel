@@ -190,32 +190,39 @@ def _call_gemini_with_images(
     contents.append(prompt)
     logger.info("Sending %d images to Gemini for layout clustering.", images_sent)
 
-    for attempt in range(4):
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-                config=gtypes.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.2,
-                    max_output_tokens=16000,
-                    thinking_config=gtypes.ThinkingConfig(thinking_budget=0),
-                ),
-            )
-            return response.text.strip()
-        except Exception as e:
-            err = str(e)
-            if "quota" in err.lower() or "429" in err or "rate" in err.lower():
-                wait = 15 * (2 ** attempt)
-                logger.warning("Gemini rate limit — waiting %ds…", wait)
-                time.sleep(wait)
-            elif "payload" in err.lower() or "413" in err:
-                logger.warning("Payload too large — retrying text-only.")
-                return _call_gemini_text_only(prompt, client)
-            else:
-                logger.error("Gemini error: %s", e)
-                raise
-    raise RuntimeError("Gemini exhausted after 4 attempts")
+    models_to_try = [GEMINI_MODEL, "gemini-2.0-flash"]
+    for model in models_to_try:
+        if model != GEMINI_MODEL:
+            logger.warning("Falling back to %s…", model)
+        for attempt in range(4):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=gtypes.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.2,
+                        max_output_tokens=16000,
+                        thinking_config=gtypes.ThinkingConfig(thinking_budget=0),
+                    ),
+                )
+                return response.text.strip()
+            except Exception as e:
+                err = str(e)
+                if "quota" in err.lower() or "429" in err or "rate" in err.lower():
+                    wait = 15 * (2 ** attempt)
+                    logger.warning("Gemini rate limit — waiting %ds…", wait)
+                    time.sleep(wait)
+                elif "503" in err or "unavailable" in err.lower():
+                    logger.warning("Gemini 503 on %s — will try next model.", model)
+                    break
+                elif "payload" in err.lower() or "413" in err:
+                    logger.warning("Payload too large — retrying text-only.")
+                    return _call_gemini_text_only(prompt, client)
+                else:
+                    logger.error("Gemini error: %s", e)
+                    raise
+    raise RuntimeError("Gemini exhausted all models/attempts")
 
 
 def _call_gemini_text_only(prompt: str, client) -> str:
