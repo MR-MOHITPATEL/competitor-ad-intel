@@ -193,6 +193,46 @@ for k, v in defaults.items():
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_supabase_image_map(page_label: str) -> dict[str, list[str]]:
+    """
+    List all images for page_label from Supabase storage and return
+    a map of ad_id → [public_url, ...]. Cached for 5 minutes.
+    """
+    try:
+        sb_url = os.getenv("SUPABASE_URL", "").strip()
+        sb_key = os.getenv("SUPABASE_KEY", "").strip()
+        if not (sb_url and sb_key):
+            return {}
+        from supabase import create_client
+        sb = create_client(sb_url, sb_key)
+        bucket = "ad-intel-data"
+        prefix = f"images/{page_label}"
+        result: dict[str, list[str]] = {}
+        offset = 0
+        while True:
+            items = sb.storage.from_(bucket).list(prefix, {"limit": 500, "offset": offset})
+            if not items:
+                break
+            for item in items:
+                name = item.get("name", "")
+                if not name:
+                    continue
+                # filename starts with ad_id (numeric) followed by _
+                ad_id = name.split("_")[0]
+                if not ad_id.isdigit():
+                    continue
+                public_url = f"{sb_url}/storage/v1/object/public/{bucket}/{prefix}/{name}"
+                result.setdefault(ad_id, []).append(public_url)
+            if len(items) < 500:
+                break
+            offset += 500
+        return result
+    except Exception:
+        return {}
+
+
 def resolve_image(url: str) -> str:
     """Return a displayable image source.
     Local path → use as-is if it exists.
@@ -1107,8 +1147,14 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
     vision_map = {a.get("ad_id"): a for a in vision_data if a.get("ad_id")}
     scored_map = {a.get("ad_id"): a for a in scored_ads  if a.get("ad_id")}
 
+    sb_image_map = _load_supabase_image_map(page_label)
+
     def _best_image_url(ad_id: str) -> str:
         """Return best available image URL for an ad_id, preferring Supabase."""
+        # Direct Supabase storage lookup (most reliable — uses live listing)
+        if ad_id in sb_image_map:
+            return sb_image_map[ad_id][0]
+        # Fall back to URLs stored in scored/vision JSON
         for src in [scored_map.get(ad_id), vision_map.get(ad_id)]:
             if not src:
                 continue
