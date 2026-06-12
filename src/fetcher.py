@@ -362,14 +362,18 @@ def _facebook_login(page, email: str, password: str) -> bool:
     """Log into Facebook. Returns True on success."""
     try:
         logger.info("Logging into Facebook as %s…", email)
-        page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=30_000)
-        time.sleep(2)
-        # Dismiss any cookie/consent dialog first
+        page.goto("https://www.facebook.com/", wait_until="domcontentloaded", timeout=45_000)
+        time.sleep(4)
+
+        logger.info("FB login — current url: %s", page.url)
+
+        # Dismiss cookie/consent dialog
         for selector in [
             'button:has-text("Allow all cookies")',
             'button:has-text("Accept all")',
             'button:has-text("Only allow essential cookies")',
             '[data-testid="cookie-policy-manage-dialog-accept-button"]',
+            'button:has-text("Decline optional cookies")',
         ]:
             try:
                 page.click(selector, timeout=2_000)
@@ -377,14 +381,59 @@ def _facebook_login(page, email: str, password: str) -> bool:
                 break
             except PWTimeout:
                 continue
-        page.fill('#email', email, timeout=10_000)
-        page.fill('#pass', password, timeout=10_000)
-        page.click('[name="login"]', timeout=10_000)
-        time.sleep(5)
-        # Check we're no longer on the login page
-        if "login" in page.url or "checkpoint" in page.url:
-            logger.warning("Facebook login may have failed — still on: %s", page.url)
+
+        # Try multiple selectors for email field (Facebook varies by region/version)
+        email_sel = None
+        for sel in ['#email', 'input[name="email"]', 'input[type="email"]', 'input[data-testid="royal_email"]']:
+            try:
+                page.wait_for_selector(sel, timeout=5_000)
+                email_sel = sel
+                break
+            except PWTimeout:
+                continue
+
+        if not email_sel:
+            logger.warning("FB login — could not find email field. Page url: %s", page.url)
+            logger.warning("FB login — page title: %s", page.title())
             return False
+
+        page.fill(email_sel, email)
+        time.sleep(0.5)
+
+        pass_sel = None
+        for sel in ['#pass', 'input[name="pass"]', 'input[type="password"]']:
+            try:
+                page.wait_for_selector(sel, timeout=5_000)
+                pass_sel = sel
+                break
+            except PWTimeout:
+                continue
+
+        if not pass_sel:
+            logger.warning("FB login — could not find password field.")
+            return False
+
+        page.fill(pass_sel, password)
+        time.sleep(0.5)
+
+        # Submit
+        for sel in ['[name="login"]', 'button[type="submit"]', 'input[type="submit"]']:
+            try:
+                page.click(sel, timeout=5_000)
+                break
+            except PWTimeout:
+                continue
+
+        time.sleep(6)
+        logger.info("FB login — after submit url: %s", page.url)
+
+        if "checkpoint" in page.url:
+            logger.warning("Facebook triggered a security checkpoint — 2FA or suspicious login blocked.")
+            return False
+        if "login" in page.url:
+            logger.warning("Facebook login may have failed — still on login page.")
+            return False
+
         logger.info("Facebook login successful.")
         return True
     except Exception as e:
