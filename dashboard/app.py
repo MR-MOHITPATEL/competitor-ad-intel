@@ -1107,6 +1107,39 @@ if page_label and (DATA_ANALYZED / f"{page_label}_text_analysis.json").exists():
     vision_map = {a.get("ad_id"): a for a in vision_data if a.get("ad_id")}
     scored_map = {a.get("ad_id"): a for a in scored_ads  if a.get("ad_id")}
 
+    def _best_image_url(ad_id: str) -> str:
+        """Return best available image URL for an ad_id, preferring Supabase."""
+        for src in [scored_map.get(ad_id), vision_map.get(ad_id)]:
+            if not src:
+                continue
+            urls = (src.get("ad_supabase_image_urls") or
+                    src.get("ad_remote_image_urls") or
+                    src.get("ad_image_urls") or
+                    ([src["primary_image_url"]] if src.get("primary_image_url") else []))
+            if urls:
+                return urls[0]
+        return ""
+
+    # Patch ad_images in layout and visual roots with live URLs from scored/vision data
+    for root in layout_roots_data.get("layout_roots", []):
+        for item in root.get("ad_images", []):
+            item["image_url"] = _best_image_url(item.get("ad_id", "")) or item.get("image_url", "")
+        if not root.get("ad_images"):
+            root["ad_images"] = [
+                {"ad_id": aid, "image_url": _best_image_url(aid)}
+                for aid in root.get("ad_ids", [])
+                if _best_image_url(aid)
+            ]
+    for root in visual_roots_data_loaded.get("visual_roots", []):
+        for item in root.get("ad_images", []):
+            item["image_url"] = _best_image_url(item.get("ad_id", "")) or item.get("image_url", "")
+        if not root.get("ad_images"):
+            root["ad_images"] = [
+                {"ad_id": aid, "image_url": _best_image_url(aid)}
+                for aid in root.get("ad_ids", [])
+                if _best_image_url(aid)
+            ]
+
     ad_layout_map: dict[str, dict] = {}
     for root in layout_roots_data.get("layout_roots", []):
         for aid in root.get("ad_ids", []):
